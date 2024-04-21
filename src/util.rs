@@ -24,26 +24,44 @@
 // SUCH DAMAGE.
 //
 
-use std::io;
 use std::io::Read as _;
+use std::io::{self, Seek, SeekFrom};
 
 use crate::error::Error;
 
 const ASCII_0: u8 = 0x30;
 const ASCII_9: u8 = 0x39;
 
-pub fn read8<R>(reader: &mut R) -> Result<u8, io::Error> where R: io::Read {
+pub fn read8<R>(reader: &mut R) -> Result<u8, io::Error>
+where
+    R: io::Read,
+{
     let mut buf = [0u8; 1];
     reader.read_exact(&mut buf).and(Ok(buf[0]))
 }
 
-pub fn read16<R>(reader: &mut R) -> Result<u16, io::Error> where R: io::Read {
+pub fn read16<R>(reader: &mut R) -> Result<u16, io::Error>
+where
+    R: io::Read,
+{
     let mut buf = [0u8; 2];
     reader.read_exact(&mut buf)?;
     Ok(u16::from_be_bytes(buf))
 }
 
-pub fn read64<R>(reader: &mut R) -> Result<u64, io::Error> where R: io::Read {
+pub fn read32<R>(reader: &mut R) -> Result<u32, io::Error>
+where
+    R: io::Read,
+{
+    let mut buf = [0u8; 4];
+    reader.read_exact(&mut buf)?;
+    Ok(u32::from_be_bytes(buf))
+}
+
+pub fn read64<R>(reader: &mut R) -> Result<u64, io::Error>
+where
+    R: io::Read,
+{
     let mut buf = [0u8; 8];
     reader.read_exact(&mut buf)?;
     Ok(u64::from_be_bytes(buf))
@@ -54,13 +72,19 @@ pub trait BufReadExt {
     fn is_eof(&mut self) -> io::Result<bool>;
 }
 
-impl<T> BufReadExt for T where T: io::BufRead {
+impl<T> BufReadExt for T
+where
+    T: io::BufRead,
+{
     fn discard_exact(&mut self, mut len: usize) -> io::Result<()> {
         while len > 0 {
             let consume_len = match self.fill_buf() {
-                Ok(buf) if buf.is_empty() =>
+                Ok(buf) if buf.is_empty() => {
                     return Err(io::Error::new(
-                        io::ErrorKind::UnexpectedEof, "unexpected EOF")),
+                        io::ErrorKind::UnexpectedEof,
+                        "unexpected EOF",
+                    ))
+                }
                 Ok(buf) => buf.len().min(len),
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(e) => return Err(e),
@@ -83,13 +107,14 @@ impl<T> BufReadExt for T where T: io::BufRead {
 }
 
 pub trait ReadExt {
-    fn read_exact_len(&mut self, buf: &mut Vec<u8>, len: usize)
-                      -> io::Result<()>;
+    fn read_exact_len(&mut self, buf: &mut Vec<u8>, len: usize) -> io::Result<()>;
 }
 
-impl<T> ReadExt for T where T: io::Read {
-    fn read_exact_len(&mut self, buf: &mut Vec<u8>, len: usize)
-                      -> io::Result<()> {
+impl<T> ReadExt for T
+where
+    T: io::Read,
+{
+    fn read_exact_len(&mut self, buf: &mut Vec<u8>, len: usize) -> io::Result<()> {
         // Using `vec![0; len]` and `read_exact` is more efficient but
         // less robust against broken files; a small file can easily
         // trigger OOM by a huge length value without actual data.
@@ -97,7 +122,9 @@ impl<T> ReadExt for T where T: io::Read {
         // we could revisit this.
         if self.take(len as u64).read_to_end(buf)? != len {
             return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof, "unexpected EOF"));
+                io::ErrorKind::UnexpectedEof,
+                "unexpected EOF",
+            ));
         }
         Ok(())
     }
@@ -128,9 +155,9 @@ pub fn ctou32(c: u8) -> Result<u32, Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::io::ErrorKind;
     use std::io::Read;
-    use super::*;
 
     #[test]
     fn discard_exact() {

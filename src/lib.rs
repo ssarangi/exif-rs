@@ -93,8 +93,8 @@ pub use error::Error;
 pub use jpeg::get_exif_attr as get_exif_attr_from_jpeg;
 pub use reader::{Exif, Reader};
 pub use tag::{Context, Tag};
-pub use tiff::{DateTime, Field, In};
 pub use tiff::parse_exif;
+pub use tiff::{DateTime, Field, In};
 pub use value::Value;
 pub use value::{Rational, SRational};
 
@@ -110,6 +110,7 @@ mod tmacro;
 pub mod doc;
 mod endian;
 mod error;
+mod fuji;
 mod isobmff;
 mod jpeg;
 mod png;
