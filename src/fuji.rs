@@ -1,4 +1,4 @@
-use std::io::{BufRead, ErrorKind};
+use std::io::{BufRead, BufReader, ErrorKind};
 
 use crate::error::Error;
 use crate::tiff::IfdEntry;
@@ -19,7 +19,7 @@ use num_traits::FromPrimitive;
 
 mod marker {
     // The first byte of a marker
-    pub const TIFF1_PTR_OFFSET: usize = 84;
+    pub const TIFF1_JPEG_PTR_OFFSET: usize = 84;
     pub const TIFF2_PTR_OFFSET: usize = 100;
     pub const TAGS_PTR_OFFSET: usize = 92;
 }
@@ -159,94 +159,109 @@ pub fn is_fuji_raf(buf: &[u8]) -> bool {
     buf[0..8] == b"FUJIFILM"[..]
 }
 
-pub fn parse_fuji_raw<R>(reader: &mut R)
+pub fn parse_fuji_raw<R>(reader: &mut R) -> Result<Vec<u8>, Error>
 where
-    R: BufRead,
+    R: BufRead + Seek,
 {
     // Read until the first pointer offset
+    // reader
+    //     .discard_exact(marker::TIFF1_JPEG_PTR_OFFSET)
+    //     .expect_err(&format!(
+    //         "Expected to read {} bytes from RAF file",
+    //         marker::TIFF1_JPEG_PTR_OFFSET
+    //     ));
     reader
-        .discard_exact(marker::TIFF1_PTR_OFFSET)
-        .expect_err(&format!(
-            "Expected to read {} bytes from RAF file",
-            marker::TIFF1_PTR_OFFSET
-        ));
+        .seek(std::io::SeekFrom::Start(
+            marker::TIFF1_JPEG_PTR_OFFSET as u64,
+        ))
+        .expect("Failed to seek to TIFF1_JPEG_PTR_OFFSET");
 
-    let ifd0_offset = read32(reader);
-    let ifd1_offset =
-        reader.discard_exact(marker::TIFF2_PTR_OFFSET - (marker::TIFF1_PTR_OFFSET + 4));
+    let jpeg_offset = read32(reader).expect("Failed to read JPEG offset");
+    let jpeg_length = read32(reader).expect("Failed to read JPEG length");
+
+    reader
+        .seek(std::io::SeekFrom::Start(jpeg_offset.into()))
+        .expect("Failed to seek to JPEG offset");
+
+    let mut buf = vec![0u8; jpeg_length as usize];
+    reader
+        .read_exact(&mut buf)
+        .expect("Failed to read JPEG data");
+
+    Ok(buf)
 }
 
-/// Get the Exif attribute information segment from a JPEG file.
-pub fn parse_fuji_raw_old<R>(reader: &mut R)
-where
-    R: BufRead,
-{
-    let mut bytes_to_read = [0u8; marker::TIFF1_PTR_OFFSET];
+// /// Get the Exif attribute information segment from a JPEG file.
+// pub fn parse_fuji_raw_old<R>(reader: &mut R)
+// where
+//     R: BufRead,
+// {
+//     let mut bytes_to_read = [0u8; marker::TIFF1_PTR_OFFSET];
 
-    let _ = reader.read_exact(&mut bytes_to_read);
+//     let _ = reader.read_exact(&mut bytes_to_read);
 
-    let num_ifd_entries = read32(reader).ok().unwrap();
+//     let num_ifd_entries = read32(reader).ok().unwrap();
 
-    println!("num_ifd_entries: {:?}", num_ifd_entries);
+//     println!("num_ifd_entries: {:?}", num_ifd_entries);
 
-    for _ in 0..num_ifd_entries {
-        let tag_code = read16(reader).unwrap();
-        let len = read16(reader).unwrap_or(0) as usize;
-        if let Some(tag) = RafTags::from_u16(tag_code) {
-            match tag {
-                RafTags::RawImageFullSize
-                | RafTags::RawImageCropTopLeft
-                | RafTags::RawImageCroppedSize
-                | RafTags::RawImageAspectRatio
-                | RafTags::WB_GRGBLevels => {
-                    println!("tag: {:?}, len: {}", tag, len);
-                    // let n = len / size_of::<u16>();
-                    // let entry = Entry {
-                    //     tag,
-                    //     value: Value::Short(
-                    //         (0..n)
-                    //             .map(|_| stream.read_u16::<BigEndian>())
-                    //             .collect::<std::io::Result<Vec<_>>>()?,
-                    //     ),
-                    //     embedded: None,
-                    // };
-                    // entries.insert(tag, entry);
-                }
-                RafTags::FujiLayout | RafTags::XTransLayout => {
-                    println!("tag: {:?}, len: {}", tag, len);
-                    // let n = len / size_of::<u8>();
-                    // let entry = Entry {
-                    //     tag,
-                    //     value: Value::Byte(
-                    //         (0..n)
-                    //             .map(|_| stream.read_u8())
-                    //             .collect::<std::io::Result<Vec<_>>>()?,
-                    //     ),
-                    //     embedded: None,
-                    // };
-                    // entries.insert(tag, entry);
-                }
-                // This one is in other byte-order...
-                RafTags::RAFData => {
-                    println!("tag: {:?}, len: {}", tag, len);
-                    // let n = len / size_of::<u32>();
-                    // let entry = Entry {
-                    //     tag,
-                    //     value: Value::Long(
-                    //         (0..n)
-                    //             .map(|_| stream.read_u32::<LittleEndian>())
-                    //             .collect::<std::io::Result<Vec<_>>>()?,
-                    //     ),
-                    //     embedded: None,
-                    // };
-                    // entries.insert(tag, entry);
-                }
-                // Skip other tags
-                _ => {
-                    // stream.seek(SeekFrom::Current(len as i64))?;
-                    println!("tag: {:?}, len: {}", tag, len);
-                }
-            }
-        }
-    }
-}
+//     for _ in 0..num_ifd_entries {
+//         let tag_code = read16(reader).unwrap();
+//         let len = read16(reader).unwrap_or(0) as usize;
+//         if let Some(tag) = RafTags::from_u16(tag_code) {
+//             match tag {
+//                 RafTags::RawImageFullSize
+//                 | RafTags::RawImageCropTopLeft
+//                 | RafTags::RawImageCroppedSize
+//                 | RafTags::RawImageAspectRatio
+//                 | RafTags::WB_GRGBLevels => {
+//                     println!("tag: {:?}, len: {}", tag, len);
+//                     // let n = len / size_of::<u16>();
+//                     // let entry = Entry {
+//                     //     tag,
+//                     //     value: Value::Short(
+//                     //         (0..n)
+//                     //             .map(|_| stream.read_u16::<BigEndian>())
+//                     //             .collect::<std::io::Result<Vec<_>>>()?,
+//                     //     ),
+//                     //     embedded: None,
+//                     // };
+//                     // entries.insert(tag, entry);
+//                 }
+//                 RafTags::FujiLayout | RafTags::XTransLayout => {
+//                     println!("tag: {:?}, len: {}", tag, len);
+//                     // let n = len / size_of::<u8>();
+//                     // let entry = Entry {
+//                     //     tag,
+//                     //     value: Value::Byte(
+//                     //         (0..n)
+//                     //             .map(|_| stream.read_u8())
+//                     //             .collect::<std::io::Result<Vec<_>>>()?,
+//                     //     ),
+//                     //     embedded: None,
+//                     // };
+//                     // entries.insert(tag, entry);
+//                 }
+//                 // This one is in other byte-order...
+//                 RafTags::RAFData => {
+//                     println!("tag: {:?}, len: {}", tag, len);
+//                     // let n = len / size_of::<u32>();
+//                     // let entry = Entry {
+//                     //     tag,
+//                     //     value: Value::Long(
+//                     //         (0..n)
+//                     //             .map(|_| stream.read_u32::<LittleEndian>())
+//                     //             .collect::<std::io::Result<Vec<_>>>()?,
+//                     //     ),
+//                     //     embedded: None,
+//                     // };
+//                     // entries.insert(tag, entry);
+//                 }
+//                 // Skip other tags
+//                 _ => {
+//                     // stream.seek(SeekFrom::Current(len as i64))?;
+//                     println!("tag: {:?}, len: {}", tag, len);
+//                 }
+//             }
+//         }
+//     }
+// }

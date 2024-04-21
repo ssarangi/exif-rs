@@ -108,7 +108,9 @@ impl Reader {
         if tiff::is_tiff(&buf) {
             reader.read_to_end(&mut buf)?;
         } else if fuji::is_fuji_raf(&buf) {
-            fuji::parse_fuji_raw(&mut buf.chain(reader));
+            reader.seek(io::SeekFrom::Start(0))?;
+            buf = fuji::parse_fuji_raw(reader)?;
+            buf = jpeg::get_exif_attr(&mut buf.chain(reader))?; // JPEG in RAF
         } else if jpeg::is_jpeg(&buf) {
             buf = jpeg::get_exif_attr(&mut buf.chain(reader))?;
         } else if png::is_png(&buf) {
