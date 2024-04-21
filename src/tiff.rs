@@ -27,6 +27,7 @@
 use crate::endian::{BigEndian, Endian, LittleEndian};
 use crate::error::Error;
 use crate::ifd::IfdEntry;
+use crate::parser::{Parse, Parser};
 use crate::tag::{Context, Tag};
 use crate::value::get_type_info;
 use crate::value::Value;
@@ -45,7 +46,7 @@ pub const TIFF_LE_SIG: [u8; 4] = [0x49, 0x49, 0x2a, 0x00];
 /// The boolean value is true if the data is little endian.
 /// If an error occurred, `exif::Error` is returned.
 pub fn parse_exif(data: &[u8]) -> Result<(Vec<Field>, bool), Error> {
-    let mut parser = Parser::new();
+    let mut parser = Parser::default();
     parser.parse(data)?;
     let (entries, le) = (parser.entries, parser.little_endian);
     Ok((
@@ -57,21 +58,8 @@ pub fn parse_exif(data: &[u8]) -> Result<(Vec<Field>, bool), Error> {
     ))
 }
 
-#[derive(Debug)]
-pub struct Parser {
-    pub entries: Vec<IfdEntry>,
-    pub little_endian: bool,
-}
-
-impl Parser {
-    pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-            little_endian: false,
-        }
-    }
-
-    pub fn parse(&mut self, data: &[u8]) -> Result<(), Error> {
+impl Parse for Parser {
+    fn parse(&mut self, data: &[u8]) -> Result<(), Error> {
         // Check the byte order and call the real parser.
         if data.len() < 8 {
             return Err(Error::InvalidFormat("Truncated TIFF header"));
@@ -88,7 +76,9 @@ impl Parser {
             _ => Err(Error::InvalidFormat("Invalid TIFF byte order")),
         }
     }
+}
 
+impl Parser {
     fn parse_sub<E>(&mut self, data: &[u8]) -> Result<(), Error>
     where
         E: Endian,

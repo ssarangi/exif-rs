@@ -34,6 +34,8 @@ use crate::ifd::IfdEntry;
 use crate::ifd::ProvideUnit;
 use crate::isobmff;
 use crate::jpeg;
+use crate::parser;
+use crate::parser::Parse;
 use crate::png;
 use crate::tag::Tag;
 use crate::tiff;
@@ -74,7 +76,7 @@ impl Reader {
     /// Parses the Exif attributes from raw Exif data.
     /// If an error occurred, `exif::Error` is returned.
     pub fn read_raw(&self, data: Vec<u8>) -> Result<Exif, Error> {
-        let mut parser = tiff::Parser::new();
+        let mut parser = parser::Parser::default();
         parser.parse(&data)?;
         let entry_map = parser
             .entries

@@ -114,6 +114,7 @@ mod fuji;
 pub mod ifd;
 mod isobmff;
 mod jpeg;
+mod parser;
 mod png;
 mod reader;
 mod tag;
