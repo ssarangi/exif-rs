@@ -1,7 +1,6 @@
 use std::io::{BufRead, BufReader, ErrorKind};
 
 use crate::error::Error;
-use crate::tiff::IfdEntry;
 use crate::util::{read16, read32, read8, BufReadExt as _, ReadExt as _};
 use crate::{Field, Tag};
 
@@ -16,6 +15,61 @@ use std::io::{self, Seek};
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+
+/*
+Based on the following: http://fileformats.archiveteam.org/wiki/Fujifilm_RAF
+* Format
+** Byte order is Motorola (Big Endian)
+
+*** 16 bytes string to identify the file (magic)
+**** "FUJIFILMCCD-RAW "
+*** 4 bytes
+**** Format version. E.g. "0201"
+*** 8 bytes
+**** Camera number ID. E.g. "FF389501"
+*** 32 bytes for the camera string, \0 terminated
+*** offset directory
+**** Version (4 bytes) for the directory. E.g. "0100" or "0159".
+**** 20 bytes "unknown"
+**** Jpeg image offset (4 bytes)
+**** Jpeg Image length (4 bytes)
+**** CFA Header Offset (4 bytes)
+**** CFA Header Length (4 bytes)
+**** CFA Offset (4 bytes)
+**** CFA Length (4 bytes)
+**** rest unused
+*** Jpeg image offset
+**** Exif JFIF with thumbnail + preview
+*** CFA Header offset - Big Endian
+**** 4 bytes: count of records
+**** Records, one after the other
+***** 2 bytes: tag ID
+***** 2 bytes: size of record (N)
+***** N bytes: data
+*** CFA Offset
+**** Uncompressed RAW
+*/
+
+macro_rules! tiff_tag_enum {
+    ($e:ty) => {
+        impl From<$e> for u16 {
+            fn from(val: $e) -> u16 {
+                val as u16
+            }
+        }
+        impl TryFrom<u16> for $e {
+            type Error = String;
+
+            fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
+                Self::n(value).ok_or(format!(
+                    "Unable to convert tag: {}, not defined in enum",
+                    value
+                ))
+            }
+        }
+        impl crate::tags::TiffTag for $e {}
+    };
+}
 
 mod marker {
     // The first byte of a marker
@@ -163,13 +217,101 @@ pub fn parse_fuji_raw<R>(reader: &mut R) -> Result<Vec<u8>, Error>
 where
     R: BufRead + Seek,
 {
-    // Read until the first pointer offset
-    // reader
-    //     .discard_exact(marker::TIFF1_JPEG_PTR_OFFSET)
-    //     .expect_err(&format!(
-    //         "Expected to read {} bytes from RAF file",
-    //         marker::TIFF1_JPEG_PTR_OFFSET
-    //     ));
+    // Read the primary RAF tags. JPEG exif tags will be read later.
+    reader
+        .seek(std::io::SeekFrom::Start(marker::TAGS_PTR_OFFSET as u64))
+        .expect("Failed to seek to TAGS_PTR_OFFSET");
+
+    let raf_offset = read32(reader).expect("Failed to read raf_offset");
+
+    reader.seek(SeekFrom::Start(raf_offset as u64))?;
+    let num_tags = read32(reader).expect("Failed to read num_tags");
+
+    for _ in 0..num_tags {
+        let tag = read16(reader).expect("Failed to read tag");
+        let len = read16(reader).expect("Failed to read len") as usize;
+
+        match RafTags::from_u16(tag) {
+            Some(RafTags::RawImageFullSize)
+            | Some(RafTags::RawImageCropTopLeft)
+            | Some(RafTags::RawImageCroppedSize)
+            | Some(RafTags::RawImageAspectRatio)
+            | Some(RafTags::WB_GRGBLevels) => {
+                let n = len / size_of::<u16>();
+                // let entry = Entry {
+                //     tag,
+                //     value: Value::Short(
+                //         (0..n)
+                //             .map(|_| reader.read_u16::<BigEndian>())
+                //             .collect::<std::io::Result<Vec<_>>>()?,
+                //     ),
+                //     embedded: None,
+                // };
+
+                println!(
+                    "Tag: {:?}, Value: {:?}",
+                    tag,
+                    (0..n)
+                        .map(|_| reader.read_u16::<BigEndian>())
+                        .collect::<std::io::Result<Vec<_>>>()?
+                );
+            }
+            Some(RafTags::FujiLayout) | Some(RafTags::XTransLayout) => {
+                let n = len / size_of::<u8>();
+                // let entry = Entry {
+                //     tag,
+                //     value: Value::Byte(
+                //         (0..n)
+                //             .map(|_| reader.read_u8())
+                //             .collect::<std::io::Result<Vec<_>>>()?,
+                //     ),
+                //     embedded: None,
+                // };
+
+                println!(
+                    "Tag: {:?}, Value: {:?}",
+                    tag,
+                    (0..n)
+                        .map(|_| reader.read_u8())
+                        .collect::<std::io::Result<Vec<_>>>()?
+                );
+            }
+            // This one is in other byte-order...
+            Some(RafTags::RAFData) => {
+                let n = len / size_of::<u32>();
+                // let entry = Entry {
+                //     tag,
+                //     value: Value::Long(
+                //         (0..n)
+                //             .map(|_| reader.read_u32::<LittleEndian>())
+                //             .collect::<std::io::Result<Vec<_>>>()?,
+                //     ),
+                //     embedded: None,
+                // };
+
+                println!(
+                    "Tag: {:?}, Value: {:?}",
+                    tag,
+                    (0..n)
+                        .map(|_| reader.read_u32::<LittleEndian>())
+                        .collect::<std::io::Result<Vec<_>>>()?
+                );
+            }
+            // Skip other tags
+            _ => {
+                reader.seek(SeekFrom::Current(len as i64))?;
+            }
+        }
+    }
+
+    get_exif_attr_sub(reader)
+}
+
+pub fn get_exif_attr_sub<R>(reader: &mut R) -> Result<Vec<u8>, Error>
+where
+    R: BufRead + Seek,
+{
+    // Read the Primary TIFF / JPEG Header which will parse almost all the common tags
     reader
         .seek(std::io::SeekFrom::Start(
             marker::TIFF1_JPEG_PTR_OFFSET as u64,
@@ -183,12 +325,12 @@ where
         .seek(std::io::SeekFrom::Start(jpeg_offset.into()))
         .expect("Failed to seek to JPEG offset");
 
-    let mut buf = vec![0u8; jpeg_length as usize];
+    let mut embedded_jpeg = vec![0u8; jpeg_length as usize];
     reader
-        .read_exact(&mut buf)
+        .read_exact(&mut embedded_jpeg)
         .expect("Failed to read JPEG data");
 
-    Ok(buf)
+    Ok(embedded_jpeg)
 }
 
 // /// Get the Exif attribute information segment from a JPEG file.

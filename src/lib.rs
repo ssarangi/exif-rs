@@ -90,11 +90,11 @@
 //! See the [upgrade guide](doc::upgrade) for API incompatibilities.
 
 pub use error::Error;
+pub use ifd::{DateTime, Field, In};
 pub use jpeg::get_exif_attr as get_exif_attr_from_jpeg;
 pub use reader::{Exif, Reader};
 pub use tag::{Context, Tag};
 pub use tiff::parse_exif;
-pub use tiff::{DateTime, Field, In};
 pub use value::Value;
 pub use value::{Rational, SRational};
 
@@ -111,6 +111,7 @@ pub mod doc;
 mod endian;
 mod error;
 mod fuji;
+pub mod ifd;
 mod isobmff;
 mod jpeg;
 mod png;

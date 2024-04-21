@@ -30,13 +30,16 @@ use std::io::Read;
 
 use crate::error::Error;
 use crate::fuji;
+use crate::ifd::IfdEntry;
+use crate::ifd::ProvideUnit;
 use crate::isobmff;
 use crate::jpeg;
 use crate::png;
 use crate::tag::Tag;
 use crate::tiff;
-use crate::tiff::{Field, IfdEntry, In, ProvideUnit};
 use crate::webp;
+use crate::Field;
+use crate::In;
 
 /// A struct to parse the Exif attributes and
 /// create an `Exif` instance that holds the results.

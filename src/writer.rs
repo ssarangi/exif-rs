@@ -27,11 +27,12 @@
 use std::io;
 use std::io::{Seek, SeekFrom, Write};
 
-use crate::endian::{Endian, BigEndian, LittleEndian};
+use crate::endian::{BigEndian, Endian, LittleEndian};
 use crate::error::Error;
 use crate::tag::{Context, Tag};
-use crate::tiff::{Field, In, TIFF_BE_SIG, TIFF_LE_SIG};
+use crate::tiff::{TIFF_BE_SIG, TIFF_LE_SIG};
 use crate::value::Value;
+use crate::{Field, In};
 
 /// The `Writer` struct is used to encode and write Exif data.
 ///
@@ -76,13 +77,13 @@ struct Ifd<'a> {
 
 impl<'a> Ifd<'a> {
     fn is_empty(&self) -> bool {
-        self.tiff_fields.is_empty() &&
-            self.exif_fields.is_empty() &&
-            self.gps_fields.is_empty() &&
-            self.interop_fields.is_empty() &&
-            self.strips.is_none() &&
-            self.tiles.is_none() &&
-            self.jpeg.is_none()
+        self.tiff_fields.is_empty()
+            && self.exif_fields.is_empty()
+            && self.gps_fields.is_empty()
+            && self.interop_fields.is_empty()
+            && self.strips.is_none()
+            && self.tiles.is_none()
+            && self.jpeg.is_none()
     }
 }
 
@@ -117,19 +118,50 @@ impl<'a> Writer<'a> {
     pub fn push_field(&mut self, field: &'a Field) {
         match *field {
             // Ignore the tags for the internal data structure.
-            Field { tag: Tag::ExifIFDPointer, .. } |
-            Field { tag: Tag::GPSInfoIFDPointer, .. } |
-            Field { tag: Tag::InteropIFDPointer, .. } => {},
+            Field {
+                tag: Tag::ExifIFDPointer,
+                ..
+            }
+            | Field {
+                tag: Tag::GPSInfoIFDPointer,
+                ..
+            }
+            | Field {
+                tag: Tag::InteropIFDPointer,
+                ..
+            } => {}
             // These tags are synthesized from the actual strip/tile data.
-            Field { tag: Tag::StripOffsets, .. } |
-            Field { tag: Tag::StripByteCounts, .. } |
-            Field { tag: Tag::TileOffsets, .. } |
-            Field { tag: Tag::TileByteCounts, .. } => {},
+            Field {
+                tag: Tag::StripOffsets,
+                ..
+            }
+            | Field {
+                tag: Tag::StripByteCounts,
+                ..
+            }
+            | Field {
+                tag: Tag::TileOffsets,
+                ..
+            }
+            | Field {
+                tag: Tag::TileByteCounts,
+                ..
+            } => {}
             // These tags are synthesized from the actual JPEG thumbnail.
-            Field { tag: Tag::JPEGInterchangeFormat, .. } |
-            Field { tag: Tag::JPEGInterchangeFormatLength, .. } => {},
+            Field {
+                tag: Tag::JPEGInterchangeFormat,
+                ..
+            }
+            | Field {
+                tag: Tag::JPEGInterchangeFormatLength,
+                ..
+            } => {}
             // Other normal tags.
-            Field { tag: Tag(ctx, _), ifd_num, .. } => {
+            Field {
+                tag: Tag(ctx, _),
+                ifd_num,
+                ..
+            } => {
                 let ifd = self.pick_ifd(ifd_num);
                 match ctx {
                     Context::Tiff => ifd.tiff_fields.push(field),
@@ -137,7 +169,7 @@ impl<'a> Writer<'a> {
                     Context::Gps => ifd.gps_fields.push(field),
                     Context::Interop => ifd.interop_fields.push(field),
                 }
-            },
+            }
         }
     }
 
@@ -163,8 +195,10 @@ impl<'a> Writer<'a> {
     ///
     /// The write position of `w` must be set to zero before calling
     /// this method.
-    pub fn write<W>(&mut self, w: &mut W, little_endian: bool)
-                    -> Result<(), Error> where W: Write + Seek {
+    pub fn write<W>(&mut self, w: &mut W, little_endian: bool) -> Result<(), Error>
+    where
+        W: Write + Seek,
+    {
         // TIFF signature and the offset of the 0th IFD.
         if little_endian {
             w.write_all(&TIFF_LE_SIG)?;
@@ -187,8 +221,7 @@ impl<'a> Writer<'a> {
             if ifd.is_empty() {
                 return Err(Error::InvalidFormat("IFD must not be empty"));
             }
-            let ifd_num =
-                ifd_num_ck.ok_or(Error::InvalidFormat("Too many IFDs"))?;
+            let ifd_num = ifd_num_ck.ok_or(Error::InvalidFormat("Too many IFDs"))?;
             if ifd_num > 0 {
                 let next_ifd_offset = pad_and_get_offset(w)?;
                 let origpos = w.seek(SeekFrom::Current(0))?;
@@ -199,8 +232,7 @@ impl<'a> Writer<'a> {
                 }
                 w.seek(SeekFrom::Start(origpos))?;
             }
-            next_ifd_offset_offset =
-                synthesize_fields(w, ifd, In(ifd_num), little_endian)?;
+            next_ifd_offset_offset = synthesize_fields(w, ifd, In(ifd_num), little_endian)?;
             ifd_num_ck = ifd_num.checked_add(1);
         }
         w.flush()?;
@@ -218,9 +250,15 @@ impl<'a> Writer<'a> {
 
 // Synthesizes special fields, writes an image, and returns the offset
 // of the next IFD offset.
-fn synthesize_fields<W>(w: &mut W, ifd: &Ifd, ifd_num: In,
-                        little_endian: bool)
-                        -> Result<u32, Error> where W: Write + Seek {
+fn synthesize_fields<W>(
+    w: &mut W,
+    ifd: &Ifd,
+    ifd_num: In,
+    little_endian: bool,
+) -> Result<u32, Error>
+where
+    W: Write + Seek,
+{
     let exif_in_tiff;
     let gps_in_tiff;
     let interop_in_exif;
@@ -251,8 +289,7 @@ fn synthesize_fields<W>(w: &mut W, ifd: &Ifd, ifd_num: In,
         strip_byte_counts = Field {
             tag: Tag::StripByteCounts,
             ifd_num: ifd_num,
-            value: Value::Long(
-                strips.iter().map(|s| s.len() as u32).collect()),
+            value: Value::Long(strips.iter().map(|s| s.len() as u32).collect()),
         };
         ws.tiff_fields.push(&strip_byte_counts);
     }
@@ -266,8 +303,7 @@ fn synthesize_fields<W>(w: &mut W, ifd: &Ifd, ifd_num: In,
         tile_byte_counts = Field {
             tag: Tag::TileByteCounts,
             ifd_num: ifd_num,
-            value: Value::Long(
-                tiles.iter().map(|s| s.len() as u32).collect()),
+            value: Value::Long(tiles.iter().map(|s| s.len() as u32).collect()),
         };
         ws.tiff_fields.push(&tile_byte_counts);
     }
@@ -288,11 +324,20 @@ fn synthesize_fields<W>(w: &mut W, ifd: &Ifd, ifd_num: In,
 
     let interop_fields_len = ws.interop_fields.len();
     let gps_fields_len = ws.gps_fields.len();
-    let exif_fields_len = ws.exif_fields.len() +
-        match interop_fields_len { 0 => 0, _ => 1 };
-    let tiff_fields_len = ws.tiff_fields.len() +
-        match gps_fields_len { 0 => 0, _ => 1 } +
-        match exif_fields_len { 0 => 0, _ => 1 };
+    let exif_fields_len = ws.exif_fields.len()
+        + match interop_fields_len {
+            0 => 0,
+            _ => 1,
+        };
+    let tiff_fields_len = ws.tiff_fields.len()
+        + match gps_fields_len {
+            0 => 0,
+            _ => 1,
+        }
+        + match exif_fields_len {
+            0 => 0,
+            _ => 1,
+        };
     assert_ne!(tiff_fields_len, 0);
 
     ws.tiff_ifd_offset = reserve_ifd(w, tiff_fields_len)?;
@@ -336,23 +381,21 @@ fn synthesize_fields<W>(w: &mut W, ifd: &Ifd, ifd_num: In,
 }
 
 // Writes an image and returns the offset of the next IFD offset.
-fn write_image<W, E>(w: &mut W, ws: &WriterState, ifd: &Ifd)
-                     -> Result<u32, Error> where W: Write + Seek, E: Endian {
-    let (next_ifd_offset_offset,
-         strip_offsets_offset, tile_offsets_offset, jpeg_offset) =
-        write_ifd_and_fields::<_, E>(
-            w, &ws.tiff_fields, ws.tiff_ifd_offset)?;
+fn write_image<W, E>(w: &mut W, ws: &WriterState, ifd: &Ifd) -> Result<u32, Error>
+where
+    W: Write + Seek,
+    E: Endian,
+{
+    let (next_ifd_offset_offset, strip_offsets_offset, tile_offsets_offset, jpeg_offset) =
+        write_ifd_and_fields::<_, E>(w, &ws.tiff_fields, ws.tiff_ifd_offset)?;
     if ws.exif_fields.len() > 0 {
-        write_ifd_and_fields::<_, E>(
-            w, &ws.exif_fields, ws.exif_ifd_offset)?;
+        write_ifd_and_fields::<_, E>(w, &ws.exif_fields, ws.exif_ifd_offset)?;
     }
     if ws.gps_fields.len() > 0 {
-        write_ifd_and_fields::<_, E>(
-            w, &ws.gps_fields, ws.gps_ifd_offset)?;
+        write_ifd_and_fields::<_, E>(w, &ws.gps_fields, ws.gps_ifd_offset)?;
     }
     if ws.interop_fields.len() > 0 {
-        write_ifd_and_fields::<_, E>(
-            w, &ws.interop_fields, ws.interop_ifd_offset)?;
+        write_ifd_and_fields::<_, E>(w, &ws.interop_fields, ws.interop_ifd_offset)?;
     }
 
     if let Some(strips) = ifd.strips {
@@ -395,8 +438,10 @@ fn write_image<W, E>(w: &mut W, ws: &WriterState, ifd: &Ifd)
 
 // Advances the write position to make a space for a new IFD and
 // returns the offset of the IFD.
-fn reserve_ifd<W>(w: &mut W, count: usize)
-                  -> Result<u32, Error> where W: Write + Seek {
+fn reserve_ifd<W>(w: &mut W, count: usize) -> Result<u32, Error>
+where
+    W: Write + Seek,
+{
     let ifdpos = get_offset(w)?;
     assert!(ifdpos % 2 == 0);
     // The number of entries (2) + array of entries (12 * n) +
@@ -409,8 +454,13 @@ fn reserve_ifd<W>(w: &mut W, count: usize)
 // returns the offsets of the next IFD offset, StripOffsets value,
 // TileOffsets value, and JPEGInterchangeFormat value.
 fn write_ifd_and_fields<W, E>(
-    w: &mut W, fields: &Vec<&Field>, ifd_offset: u32)
-    -> Result<(u32, u32, u32, u32), Error> where W: Write + Seek, E: Endian
+    w: &mut W,
+    fields: &Vec<&Field>,
+    ifd_offset: u32,
+) -> Result<(u32, u32, u32, u32), Error>
+where
+    W: Write + Seek,
+    E: Endian,
 {
     let mut strip_offsets_offset = 0;
     let mut tile_offsets_offset = 0;
@@ -463,16 +513,21 @@ fn write_ifd_and_fields<W, E>(
     // Write the IFD.
     write_at(w, &ifd, ifd_offset)?;
 
-    Ok((next_ifd_offset_offset,
-        strip_offsets_offset, tile_offsets_offset, jpeg_offset))
+    Ok((
+        next_ifd_offset_offset,
+        strip_offsets_offset,
+        tile_offsets_offset,
+        jpeg_offset,
+    ))
 }
 
 // Returns the type, count, and encoded value.
-fn compose_value<E>(value: &Value)
-                    -> Result<(u16, usize, Vec<u8>), Error> where E: Endian {
+fn compose_value<E>(value: &Value) -> Result<(u16, usize, Vec<u8>), Error>
+where
+    E: Endian,
+{
     match *value {
-        Value::Byte(ref vec) =>
-            Ok((1, vec.len(), vec.clone())),
+        Value::Byte(ref vec) => Ok((1, vec.len(), vec.clone())),
         Value::Ascii(ref vec) => {
             let mut buf = Vec::new();
             for x in vec {
@@ -480,21 +535,21 @@ fn compose_value<E>(value: &Value)
                 buf.push(0);
             }
             Ok((2, buf.len(), buf))
-        },
+        }
         Value::Short(ref vec) => {
             let mut buf = Vec::new();
             for &v in vec {
                 E::writeu16(&mut buf, v)?;
             }
             Ok((3, vec.len(), buf))
-        },
+        }
         Value::Long(ref vec) => {
             let mut buf = Vec::new();
             for &v in vec {
                 E::writeu32(&mut buf, v)?;
             }
             Ok((4, vec.len(), buf))
-        },
+        }
         Value::Rational(ref vec) => {
             let mut buf = Vec::new();
             for v in vec {
@@ -502,27 +557,26 @@ fn compose_value<E>(value: &Value)
                 E::writeu32(&mut buf, v.denom)?;
             }
             Ok((5, vec.len(), buf))
-        },
+        }
         Value::SByte(ref vec) => {
             let bytes = vec.iter().map(|x| *x as u8).collect();
             Ok((6, vec.len(), bytes))
-        },
-        Value::Undefined(ref s, _) =>
-            Ok((7, s.len(), s.to_vec())),
+        }
+        Value::Undefined(ref s, _) => Ok((7, s.len(), s.to_vec())),
         Value::SShort(ref vec) => {
             let mut buf = Vec::new();
             for &v in vec {
                 E::writeu16(&mut buf, v as u16)?;
             }
             Ok((8, vec.len(), buf))
-        },
+        }
         Value::SLong(ref vec) => {
             let mut buf = Vec::new();
             for &v in vec {
                 E::writeu32(&mut buf, v as u32)?;
             }
             Ok((9, vec.len(), buf))
-        },
+        }
         Value::SRational(ref vec) => {
             let mut buf = Vec::new();
             for v in vec {
@@ -530,28 +584,29 @@ fn compose_value<E>(value: &Value)
                 E::writeu32(&mut buf, v.denom as u32)?;
             }
             Ok((10, vec.len(), buf))
-        },
+        }
         Value::Float(ref vec) => {
             let mut buf = Vec::new();
             for &v in vec {
                 E::writeu32(&mut buf, v.to_bits())?;
             }
             Ok((11, vec.len(), buf))
-        },
+        }
         Value::Double(ref vec) => {
             let mut buf = Vec::new();
             for &v in vec {
                 E::writeu64(&mut buf, v.to_bits())?;
             }
             Ok((12, vec.len(), buf))
-        },
-        Value::Unknown(_, _, _) =>
-            Err(Error::NotSupported("Cannot write unknown field types")),
+        }
+        Value::Unknown(_, _, _) => Err(Error::NotSupported("Cannot write unknown field types")),
     }
 }
 
-fn write_at<W>(w: &mut W, buf: &[u8], offset: u32)
-               -> io::Result<()> where W: Write + Seek {
+fn write_at<W>(w: &mut W, buf: &[u8], offset: u32) -> io::Result<()>
+where
+    W: Write + Seek,
+{
     let orig = w.seek(SeekFrom::Current(0))?;
     w.seek(SeekFrom::Start(offset as u64))?;
     w.write_all(buf)?;
@@ -560,8 +615,10 @@ fn write_at<W>(w: &mut W, buf: &[u8], offset: u32)
 }
 
 // Aligns `w` to the two-byte (word) boundary and returns the new offset.
-fn pad_and_get_offset<W>(w: &mut W)
-                         -> Result<u32, Error> where W: Write + Seek {
+fn pad_and_get_offset<W>(w: &mut W) -> Result<u32, Error>
+where
+    W: Write + Seek,
+{
     let mut pos = w.seek(SeekFrom::Current(0))?;
     if pos >= (1 << 32) - 1 {
         return Err(Error::TooBig("Offset too large"));
@@ -573,8 +630,10 @@ fn pad_and_get_offset<W>(w: &mut W)
     Ok(pos as u32)
 }
 
-fn get_offset<W>(w: &mut W)
-                 -> Result<u32, Error> where W: Write + Seek {
+fn get_offset<W>(w: &mut W) -> Result<u32, Error>
+where
+    W: Write + Seek,
+{
     let pos = w.seek(SeekFrom::Current(0))?;
     if pos as u32 as u64 != pos {
         return Err(Error::TooBig("Offset too large"));
@@ -584,8 +643,8 @@ fn get_offset<W>(w: &mut W)
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn primary() {
@@ -598,8 +657,7 @@ mod tests {
         let mut buf = Cursor::new(Vec::new());
         writer.push_field(&image_desc);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x01\x01\x0e\x00\x02\x00\x00\x00\x07\x00\x00\x00\x1a\
               \x00\x00\x00\x00\
               Sample\0";
@@ -617,8 +675,7 @@ mod tests {
         let mut buf = Cursor::new(Vec::new());
         writer.push_field(&exif_ver);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x01\x87\x69\x00\x04\x00\x00\x00\x01\x00\x00\x00\x1a\
               \x00\x00\x00\x00\
               \x00\x01\x90\x00\x00\x07\x00\x00\x00\x040231\
@@ -634,8 +691,7 @@ mod tests {
         let mut buf = Cursor::new(Vec::new());
         writer.set_tiles(tiles, In::PRIMARY);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x02\x01\x44\x00\x04\x00\x00\x00\x01\x00\x00\x00\x26\
                       \x01\x45\x00\x04\x00\x00\x00\x01\x00\x00\x00\x04\
               \x00\x00\x00\x00\
@@ -657,8 +713,7 @@ mod tests {
         writer.push_field(&desc);
         writer.set_jpeg(jpeg, In::THUMBNAIL);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x01\x01\x0e\x00\x02\x00\x00\x00\x04jpg\x00\
               \x00\x00\x00\x1a\
               \x00\x02\x02\x01\x00\x04\x00\x00\x00\x01\x00\x00\x00\x38\
@@ -682,8 +737,7 @@ mod tests {
         writer.push_field(&desc);
         writer.set_strips(strips, In::THUMBNAIL);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x01\x01\x0e\x00\x02\x00\x00\x00\x04tif\x00\
               \x00\x00\x00\x1a\
               \x00\x02\x01\x11\x00\x04\x00\x00\x00\x01\x00\x00\x00\x38\
@@ -724,8 +778,7 @@ mod tests {
         writer.push_field(&interop_index);
         writer.set_jpeg(jpeg, In::THUMBNAIL);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x03\x01\x0e\x00\x02\x00\x00\x00\x07\x00\x00\x00\x74\
                       \x87\x69\x00\x04\x00\x00\x00\x01\x00\x00\x00\x32\
                       \x88\x25\x00\x04\x00\x00\x00\x01\x00\x00\x00\x50\
@@ -768,8 +821,7 @@ mod tests {
         writer.push_field(&desc1);
         writer.push_field(&desc2);
         writer.write(&mut buf, false).unwrap();
-        let expected: &[u8] =
-            b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
+        let expected: &[u8] = b"\x4d\x4d\x00\x2a\x00\x00\x00\x08\
               \x00\x01\x01\x0e\x00\x02\x00\x00\x00\x02p\x00\x00\x00\
               \x00\x00\x00\x1a\
               \x00\x01\x01\x0e\x00\x02\x00\x00\x00\x02t\x00\x00\x00\
@@ -783,8 +835,10 @@ mod tests {
     fn empty_file() {
         let mut writer = Writer::new();
         let mut buf = Cursor::new(Vec::new());
-        assert_pat!(writer.write(&mut buf, false),
-                    Err(Error::InvalidFormat("At least one IFD must exist")));
+        assert_pat!(
+            writer.write(&mut buf, false),
+            Err(Error::InvalidFormat("At least one IFD must exist"))
+        );
     }
 
     #[test]
@@ -793,8 +847,10 @@ mod tests {
         let mut writer = Writer::new();
         let mut buf = Cursor::new(Vec::new());
         writer.set_jpeg(jpeg, In::THUMBNAIL);
-        assert_pat!(writer.write(&mut buf, false),
-                    Err(Error::InvalidFormat("IFD must not be empty")));
+        assert_pat!(
+            writer.write(&mut buf, false),
+            Err(Error::InvalidFormat("IFD must not be empty"))
+        );
     }
 
     #[test]
@@ -816,46 +872,90 @@ mod tests {
     #[test]
     fn compose_field_value() {
         let patterns = vec![
-            (Value::Byte(vec![1, 2]),
-             (1, 2, vec![1, 2]),
-             (1, 2, vec![1, 2])),
-            (Value::Ascii(vec![b"a".to_vec(), b"b".to_vec()]),
-             (2, 4, b"a\0b\0".to_vec()),
-             (2, 4, b"a\0b\0".to_vec())),
-            (Value::Short(vec![0x0102, 0x0304]),
-             (3, 2, b"\x01\x02\x03\x04".to_vec()),
-             (3, 2, b"\x02\x01\x04\x03".to_vec())),
-            (Value::Long(vec![0x01020304, 0x05060708]),
-             (4, 2, b"\x01\x02\x03\x04\x05\x06\x07\x08".to_vec()),
-             (4, 2, b"\x04\x03\x02\x01\x08\x07\x06\x05".to_vec())),
-            (Value::Rational(vec![(1, 2).into(), (3, 4).into()]),
-             (5, 2, b"\0\0\0\x01\0\0\0\x02\0\0\0\x03\0\0\0\x04".to_vec()),
-             (5, 2, b"\x01\0\0\0\x02\0\0\0\x03\0\0\0\x04\0\0\0".to_vec())),
-            (Value::SByte(vec![-2, -128]),
-             (6, 2, b"\xfe\x80".to_vec()),
-             (6, 2, b"\xfe\x80".to_vec())),
-            (Value::Undefined(b"abc".to_vec(), 0),
-             (7, 3, b"abc".to_vec()),
-             (7, 3, b"abc".to_vec())),
-            (Value::SShort(vec![-2, -0x8000]),
-             (8, 2, b"\xff\xfe\x80\x00".to_vec()),
-             (8, 2, b"\xfe\xff\x00\x80".to_vec())),
-            (Value::SLong(vec![-2, -0x80000000]),
-             (9, 2, b"\xff\xff\xff\xfe\x80\x00\x00\x00".to_vec()),
-             (9, 2, b"\xfe\xff\xff\xff\x00\x00\x00\x80".to_vec())),
-            (Value::SRational(vec![(-1, -2).into(), (-3, -4).into()]),
-             (10, 2, b"\xff\xff\xff\xff\xff\xff\xff\xfe\
-                       \xff\xff\xff\xfd\xff\xff\xff\xfc".to_vec()),
-             (10, 2, b"\xff\xff\xff\xff\xfe\xff\xff\xff\
-                       \xfd\xff\xff\xff\xfc\xff\xff\xff".to_vec())),
-            (Value::Float(vec![2.5, -0.5]),
-             (11, 2, b"\x40\x20\x00\x00\xbf\x00\x00\x00".to_vec()),
-             (11, 2, b"\x00\x00\x20\x40\x00\x00\x00\xbf".to_vec())),
-            (Value::Double(vec![2.5, -0.5]),
-             (12, 2, b"\x40\x04\x00\x00\x00\x00\x00\x00\
-                       \xbf\xe0\x00\x00\x00\x00\x00\x00".to_vec()),
-             (12, 2, b"\x00\x00\x00\x00\x00\x00\x04\x40\
-                       \x00\x00\x00\x00\x00\x00\xe0\xbf".to_vec())),
+            (
+                Value::Byte(vec![1, 2]),
+                (1, 2, vec![1, 2]),
+                (1, 2, vec![1, 2]),
+            ),
+            (
+                Value::Ascii(vec![b"a".to_vec(), b"b".to_vec()]),
+                (2, 4, b"a\0b\0".to_vec()),
+                (2, 4, b"a\0b\0".to_vec()),
+            ),
+            (
+                Value::Short(vec![0x0102, 0x0304]),
+                (3, 2, b"\x01\x02\x03\x04".to_vec()),
+                (3, 2, b"\x02\x01\x04\x03".to_vec()),
+            ),
+            (
+                Value::Long(vec![0x01020304, 0x05060708]),
+                (4, 2, b"\x01\x02\x03\x04\x05\x06\x07\x08".to_vec()),
+                (4, 2, b"\x04\x03\x02\x01\x08\x07\x06\x05".to_vec()),
+            ),
+            (
+                Value::Rational(vec![(1, 2).into(), (3, 4).into()]),
+                (5, 2, b"\0\0\0\x01\0\0\0\x02\0\0\0\x03\0\0\0\x04".to_vec()),
+                (5, 2, b"\x01\0\0\0\x02\0\0\0\x03\0\0\0\x04\0\0\0".to_vec()),
+            ),
+            (
+                Value::SByte(vec![-2, -128]),
+                (6, 2, b"\xfe\x80".to_vec()),
+                (6, 2, b"\xfe\x80".to_vec()),
+            ),
+            (
+                Value::Undefined(b"abc".to_vec(), 0),
+                (7, 3, b"abc".to_vec()),
+                (7, 3, b"abc".to_vec()),
+            ),
+            (
+                Value::SShort(vec![-2, -0x8000]),
+                (8, 2, b"\xff\xfe\x80\x00".to_vec()),
+                (8, 2, b"\xfe\xff\x00\x80".to_vec()),
+            ),
+            (
+                Value::SLong(vec![-2, -0x80000000]),
+                (9, 2, b"\xff\xff\xff\xfe\x80\x00\x00\x00".to_vec()),
+                (9, 2, b"\xfe\xff\xff\xff\x00\x00\x00\x80".to_vec()),
+            ),
+            (
+                Value::SRational(vec![(-1, -2).into(), (-3, -4).into()]),
+                (
+                    10,
+                    2,
+                    b"\xff\xff\xff\xff\xff\xff\xff\xfe\
+                       \xff\xff\xff\xfd\xff\xff\xff\xfc"
+                        .to_vec(),
+                ),
+                (
+                    10,
+                    2,
+                    b"\xff\xff\xff\xff\xfe\xff\xff\xff\
+                       \xfd\xff\xff\xff\xfc\xff\xff\xff"
+                        .to_vec(),
+                ),
+            ),
+            (
+                Value::Float(vec![2.5, -0.5]),
+                (11, 2, b"\x40\x20\x00\x00\xbf\x00\x00\x00".to_vec()),
+                (11, 2, b"\x00\x00\x20\x40\x00\x00\x00\xbf".to_vec()),
+            ),
+            (
+                Value::Double(vec![2.5, -0.5]),
+                (
+                    12,
+                    2,
+                    b"\x40\x04\x00\x00\x00\x00\x00\x00\
+                       \xbf\xe0\x00\x00\x00\x00\x00\x00"
+                        .to_vec(),
+                ),
+                (
+                    12,
+                    2,
+                    b"\x00\x00\x00\x00\x00\x00\x04\x40\
+                       \x00\x00\x00\x00\x00\x00\xe0\xbf"
+                        .to_vec(),
+                ),
+            ),
         ];
         for (val, be, le) in patterns {
             assert_eq!(compose_value::<BigEndian>(&val).unwrap(), be);

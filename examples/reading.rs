@@ -29,25 +29,27 @@ extern crate exif;
 use std::fs::File;
 use std::io::BufReader;
 
-use exif::{DateTime, In, Reader, Value, Tag};
+use exif::{DateTime, In, Reader, Tag, Value};
 
 fn main() {
     let file = File::open("tests/exif.jpg").unwrap();
-    let exif = Reader::new().read_from_container(
-        &mut BufReader::new(&file)).unwrap();
+    let exif = Reader::new()
+        .read_from_container(&mut BufReader::new(&file))
+        .unwrap();
 
     // To obtain a string representation, `Value::display_as`
     // or `Field::display_value` can be used.  To display a value with its
     // unit, call `with_unit` on the return value of `Field::display_value`.
-    let tag_list = [Tag::ExifVersion,
-                    Tag::PixelXDimension,
-                    Tag::XResolution,
-                    Tag::ImageDescription,
-                    Tag::DateTime];
+    let tag_list = [
+        Tag::ExifVersion,
+        Tag::PixelXDimension,
+        Tag::XResolution,
+        Tag::ImageDescription,
+        Tag::DateTime,
+    ];
     for tag in tag_list {
         if let Some(field) = exif.get_field(tag, In::PRIMARY) {
-            println!("{}: {}",
-                     field.tag, field.display_value().with_unit(&exif));
+            println!("{}: {}", field.tag, field.display_value().with_unit(&exif));
         }
     }
 
@@ -63,9 +65,10 @@ fn main() {
     // or `SRational::to_f64` can be used.
     if let Some(field) = exif.get_field(Tag::XResolution, In::PRIMARY) {
         match field.value {
-            Value::Rational(ref vec) if !vec.is_empty() =>
-                println!("X resolution is {}.", vec[0].to_f64()),
-            _ => {},
+            Value::Rational(ref vec) if !vec.is_empty() => {
+                println!("X resolution is {}.", vec[0].to_f64())
+            }
+            _ => {}
         }
     }
 
@@ -76,8 +79,8 @@ fn main() {
                 if let Ok(datetime) = DateTime::from_ascii(&vec[0]) {
                     println!("Year of DateTime is {}.", datetime.year);
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }
