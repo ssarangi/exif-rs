@@ -64,7 +64,9 @@ impl IfdEntry {
                     *value = parser(data, ofs as usize, cnt as usize);
                 }
             }
-            _ => panic!("value is already parsed"),
+            _ => {
+                // Do nothing... everything is successfully parsed
+            }
         }
     }
 }

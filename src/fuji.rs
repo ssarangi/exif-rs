@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::io::{BufRead, BufReader, ErrorKind, Read};
 
 use crate::endian::{BigEndian, Endian, LittleEndian};
@@ -9,7 +10,7 @@ use crate::{jpeg, Context, Exif, Field, In, Tag, Value};
 
 use crate::tag::{d_default, UnitPiece};
 use byteorder::ReadBytesExt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::f32::NAN;
 use std::io::Cursor;
 use std::io::SeekFrom;
@@ -180,99 +181,6 @@ pub enum FujiIFD {
     VignettingParams = 0xf010,
 }
 
-generate_well_known_tag_constants!(
-    // Fuji Specific Tags
-    |Context::Fuji_Raf| #[doc(hidden)]
-    (
-        RawImageFullSize,
-        0x0100,
-        DefaultValue::None,
-        d_default,
-        unit!["pixels"],
-        "Raw Image Full Size"
-    ),
-    (
-        RawImageCropTopLeft,
-        0x0110,
-        DefaultValue::None,
-        d_default,
-        unit!["pixels"],
-        "Raw Image Crop Top Left"
-    ),
-    (
-        RawImageCroppedSize,
-        0x0111,
-        DefaultValue::None,
-        d_default,
-        unit!["pixels"],
-        "Raw Image Cropped Size"
-    ),
-    (
-        RawImageAspectRatio,
-        0x0115,
-        DefaultValue::None,
-        d_default,
-        unit!["ratio"],
-        "Raw Image Aspect Ratio"
-    ),
-    (
-        RawImageSize,
-        0x0121,
-        DefaultValue::None,
-        d_default,
-        unit!["bytes"],
-        "Raw Image Size"
-    ),
-    (
-        FujiLayout,
-        0x0130,
-        DefaultValue::None,
-        d_default,
-        unit!["bytes"],
-        "Fuji Layout"
-    ),
-    (
-        XTransLayout,
-        0x0131,
-        DefaultValue::None,
-        d_default,
-        unit!["bytes"],
-        "XTrans Layout"
-    ),
-    (
-        WB_GRGBLevels,
-        0x2ff0,
-        DefaultValue::None,
-        d_default,
-        unit!["bytes"],
-        "WB GRGB Levels"
-    ),
-    (
-        RelativeExposure,
-        0x9200,
-        DefaultValue::None,
-        d_default,
-        unit!["EV"],
-        "Relative Exposure"
-    ),
-    (
-        RawExposureBias,
-        0x9650,
-        DefaultValue::None,
-        d_default,
-        unit!["EV"],
-        "Raw Exposure Bias"
-    ),
-    (
-        RAFData,
-        0xc000,
-        DefaultValue::None,
-        d_default,
-        unit!["bytes"],
-        "RAF Data"
-    ),
-);
-
 /// These are only related to the additional RAF-tags in RAF files
 // #[derive(Debug, Copy, Clone, PartialEq, enumn::N, FromPrimitive)]
 // #[repr(u16)]
@@ -402,7 +310,7 @@ impl FujiParser {
                     entries.push(IfdEntry {
                         field: Field {
                             tag: tag,
-                            ifd_num: In(0),
+                            ifd_num: In::PRIMARY,
                             value: Value::Short(
                                 (0..n)
                                     .map(|_| reader.read_u16::<byteorder::BigEndian>())
@@ -426,7 +334,7 @@ impl FujiParser {
                     entries.push(IfdEntry {
                         field: Field {
                             tag: tag,
-                            ifd_num: In(0),
+                            ifd_num: In::PRIMARY,
                             value: Value::Byte(
                                 (0..n)
                                     .map(|_| reader.read_u8())
@@ -459,7 +367,7 @@ impl FujiParser {
                     entries.push(IfdEntry {
                         field: Field {
                             tag: tag,
-                            ifd_num: In(0),
+                            ifd_num: In::PRIMARY,
                             value: Value::Long(
                                 (0..n)
                                     .map(|_| reader.read_u32::<byteorder::LittleEndian>())
@@ -476,7 +384,7 @@ impl FujiParser {
             }
         }
 
-        let entry_map = entries
+        let entry_map: HashMap<(In, Tag), usize> = entries
             .iter()
             .enumerate()
             .map(|(i, e)| (e.ifd_num_tag(), i))
