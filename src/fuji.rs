@@ -1,31 +1,19 @@
-use std::borrow::Borrow;
-use std::io::{BufRead, BufReader, ErrorKind, Read};
+use std::io::{BufRead, Read};
+use std::mem::size_of;
 
-use crate::endian::{BigEndian, Endian, LittleEndian};
 use crate::error::Error;
 use crate::ifd::IfdEntry;
 use crate::parser::{self, Parse};
-use crate::util::{read16, read32, read8, BufReadExt as _, ReadExt as _};
+use crate::util::{read16, read32};
 use crate::{jpeg, Context, Exif, Field, In, Tag, Value};
-
-use crate::tag::{d_default, UnitPiece};
 use byteorder::ReadBytesExt;
-use std::collections::{BTreeMap, HashMap};
-use std::f32::NAN;
-use std::io::Cursor;
+
+use std::collections::HashMap;
 use std::io::SeekFrom;
-use std::mem::size_of;
 
 use std::io::{self, Seek};
 
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
-
-const TIFF_BE: u16 = 0x4d4d;
-const TIFF_LE: u16 = 0x4949;
-const TIFF_FORTY_TWO: u16 = 0x002a;
-pub const TIFF_BE_SIG: [u8; 4] = [0x4d, 0x4d, 0x00, 0x2a];
-pub const TIFF_LE_SIG: [u8; 4] = [0x49, 0x49, 0x2a, 0x00];
 
 /*
 Based on the following: http://fileformats.archiveteam.org/wiki/Fujifilm_RAF
@@ -228,20 +216,20 @@ impl FujiParser {
         Ok(())
     }
 
-    fn parse_sub(&mut self, data: &[u8], offset: usize) -> Result<(), Error> {
-        match BigEndian::loadu16(data, offset as usize) {
-            TIFF_BE => {
-                println!("BigEndian");
-                // self.parse_sub::<BigEndian>(data)
-            }
-            TIFF_LE => {
-                println!("LittleEndian");
-                // self.parse_sub::<LittleEndian>(data)
-            } // _ => Err(Error::InvalidFormat("Invalid TIFF byte order")),
-            _ => println!("IFD has no endian message"),
-        }
-        Ok(())
-    }
+    // fn parse_sub(&mut self, data: &[u8], offset: usize) -> Result<(), Error> {
+    //     match BigEndian::loadu16(data, offset as usize) {
+    //         TIFF_BE => {
+    //             println!("BigEndian");
+    //             // self.parse_sub::<BigEndian>(data)
+    //         }
+    //         TIFF_LE => {
+    //             println!("LittleEndian");
+    //             // self.parse_sub::<LittleEndian>(data)
+    //         } // _ => Err(Error::InvalidFormat("Invalid TIFF byte order")),
+    //         _ => println!("IFD has no endian message"),
+    //     }
+    //     Ok(())
+    // }
 
     /// RAF format contains multiple TIFF and TIFF-like structures.
     /// This creates an IFD with all other IFD's found as sub IFD's.
@@ -264,7 +252,7 @@ impl FujiParser {
 
         reader.seek(std::io::SeekFrom::Start(marker::TIFF2_PTR_OFFSET as u64))?;
 
-        let second_ifd_offset = read32(reader).expect("Failed to read second_ifd_offset");
+        // let second_ifd_offset = read32(reader).expect("Failed to read second_ifd_offset");
 
         // Read the primary RAF tags. JPEG exif tags will be read later.
         reader
@@ -281,7 +269,7 @@ impl FujiParser {
             let tag_value = read16(reader).expect("Failed to read tag");
             let len = read16(reader).expect("Failed to read len") as usize;
 
-            let tag = Tag(Context::Fuji_Raf, tag_value);
+            let tag = Tag(Context::FujiRaf, tag_value);
 
             match tag {
                 Tag::RawImageFullSize
@@ -290,23 +278,7 @@ impl FujiParser {
                 | Tag::RawImageAspectRatio
                 | Tag::WB_GRGBLevels => {
                     let n = len / size_of::<u16>();
-                    // let entry = Entry {
-                    //     tag,
-                    //     value: Value::Short(
-                    //         (0..n)
-                    //             .map(|_| reader.read_u16::<BigEndian>())
-                    //             .collect::<std::io::Result<Vec<_>>>()?,
-                    //     ),
-                    //     embedded: None,
-                    // };
 
-                    // println!(
-                    //     "Tag: {:?}, Value: {:?}",
-                    //     tag,
-                    //     (0..n)
-                    //         .map(|_| reader.read_u16::<BigEndian>())
-                    //         .collect::<std::io::Result<Vec<_>>>()?
-                    // );
                     entries.push(IfdEntry {
                         field: Field {
                             tag: tag,
@@ -322,15 +294,6 @@ impl FujiParser {
                 }
                 Tag::FujiLayout | Tag::XTransLayout => {
                     let n = len / size_of::<u8>();
-                    // let entry = Entry {
-                    //     tag,
-                    //     value: Value::Byte(
-                    //         (0..n)
-                    //             .map(|_| reader.read_u8())
-                    //             .collect::<std::io::Result<Vec<_>>>()?,
-                    //     ),
-                    //     embedded: None,
-                    // };
                     entries.push(IfdEntry {
                         field: Field {
                             tag: tag,
@@ -347,23 +310,6 @@ impl FujiParser {
                 // This one is in other byte-order...
                 Tag::RAFData => {
                     let n = len / size_of::<u32>();
-                    // let entry = Entry {
-                    //     tag,
-                    //     value: Value::Long(
-                    //         (0..n)
-                    //             .map(|_| reader.read_u32::<LittleEndian>())
-                    //             .collect::<std::io::Result<Vec<_>>>()?,
-                    //     ),
-                    //     embedded: None,
-                    // };
-
-                    // println!(
-                    //     "Tag: {:?}, Value: {:?}",
-                    //     tag,
-                    //     (0..n)
-                    //         .map(|_| reader.read_u32::<LittleEndian>())
-                    //         .collect::<std::io::Result<Vec<_>>>()?
-                    // );
                     entries.push(IfdEntry {
                         field: Field {
                             tag: tag,

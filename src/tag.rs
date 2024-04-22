@@ -133,7 +133,7 @@ pub enum Context {
     Interop, // -- Exif IFD -- Interoperability IFD
 
     /// Fuji Specific Context
-    Fuji_Raf,
+    FujiRaf,
 }
 
 macro_rules! unit {
@@ -1494,96 +1494,97 @@ generate_well_known_tag_constants!(
         "Related image height"
     ),
 
-        // Fuji Specific Tags
-        |Context::Fuji_Raf| #[doc(hidden)]
-        (
-            RawImageFullSize,
-            0x0100,
-            DefaultValue::None,
-            d_default,
-            unit!["pixels"],
-            "Raw Image Full Size"
-        ),
-        (
-            RawImageCropTopLeft,
-            0x0110,
-            DefaultValue::None,
-            d_default,
-            unit!["pixels"],
-            "Raw Image Crop Top Left"
-        ),
-        (
-            RawImageCroppedSize,
-            0x0111,
-            DefaultValue::None,
-            d_default,
-            unit!["pixels"],
-            "Raw Image Cropped Size"
-        ),
-        (
-            RawImageAspectRatio,
-            0x0115,
-            DefaultValue::None,
-            d_default,
-            unit!["ratio"],
-            "Raw Image Aspect Ratio"
-        ),
-        (
-            RawImageSize,
-            0x0121,
-            DefaultValue::None,
-            d_default,
-            unit!["bytes"],
-            "Raw Image Size"
-        ),
-        (
-            FujiLayout,
-            0x0130,
-            DefaultValue::None,
-            d_default,
-            unit!["bytes"],
-            "Fuji Layout"
-        ),
-        (
-            XTransLayout,
-            0x0131,
-            DefaultValue::None,
-            d_default,
-            unit!["bytes"],
-            "XTrans Layout"
-        ),
-        (
-            WB_GRGBLevels,
-            0x2ff0,
-            DefaultValue::None,
-            d_default,
-            unit!["bytes"],
-            "WB GRGB Levels"
-        ),
-        (
-            RelativeExposure,
-            0x9200,
-            DefaultValue::None,
-            d_default,
-            unit!["EV"],
-            "Relative Exposure"
-        ),
-        (
-            RawExposureBias,
-            0x9650,
-            DefaultValue::None,
-            d_default,
-            unit!["EV"],
-            "Raw Exposure Bias"
-        ),
-        (
-            RAFData,
-            0xc000,
-            DefaultValue::None,
-            d_default,
-            unit!["bytes"],
-            "RAF Data"
-        ),
+    // Fuji Specific Tags
+    |Context::FujiRaf|
+    #[doc(hidden)]
+    (
+        RawImageFullSize,
+        0x0100,
+        DefaultValue::None,
+        d_default,
+        unit!["pixels"],
+        "Raw Image Full Size"
+    ),
+    (
+        RawImageCropTopLeft,
+        0x0110,
+        DefaultValue::None,
+        d_default,
+        unit!["pixels"],
+        "Raw Image Crop Top Left"
+    ),
+    (
+        RawImageCroppedSize,
+        0x0111,
+        DefaultValue::None,
+        d_default,
+        unit!["pixels"],
+        "Raw Image Cropped Size"
+    ),
+    (
+        RawImageAspectRatio,
+        0x0115,
+        DefaultValue::None,
+        d_default,
+        unit!["ratio"],
+        "Raw Image Aspect Ratio"
+    ),
+    (
+        RawImageSize,
+        0x0121,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "Raw Image Size"
+    ),
+    (
+        FujiLayout,
+        0x0130,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "Fuji Layout"
+    ),
+    (
+        XTransLayout,
+        0x0131,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "XTrans Layout"
+    ),
+    (
+        WB_GRGBLevels,
+        0x2ff0,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "WB GRGB Levels"
+    ),
+    (
+        RelativeExposure,
+        0x9200,
+        DefaultValue::None,
+        d_default,
+        unit!["EV"],
+        "Relative Exposure"
+    ),
+    (
+        RawExposureBias,
+        0x9650,
+        DefaultValue::None,
+        d_default,
+        unit!["EV"],
+        "Raw Exposure Bias"
+    ),
+    (
+        RAFData,
+        0xc000,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "RAF Data"
+    ),
 );
 
 // For Value::display_as().

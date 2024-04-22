@@ -24,7 +24,6 @@
 // SUCH DAMAGE.
 //
 
-use std::collections::HashMap;
 use std::io;
 use std::io::Read;
 
@@ -32,18 +31,13 @@ use crate::error::Error;
 use crate::exif::Exif;
 use crate::fuji;
 use crate::fuji::FujiParser;
-use crate::ifd::IfdEntry;
-use crate::ifd::ProvideUnit;
 use crate::isobmff;
 use crate::jpeg;
 use crate::parser;
 use crate::parser::Parse;
 use crate::png;
-use crate::tag::Tag;
 use crate::tiff;
 use crate::webp;
-use crate::Field;
-use crate::In;
 
 /// A struct to parse the Exif attributes and
 /// create an `Exif` instance that holds the results.
@@ -153,6 +147,7 @@ mod tests {
     use super::*;
     use crate::tag::Context;
     use crate::value::Value;
+    use crate::{In, Tag};
     use std::fs::File;
     use std::io::BufReader;
 
