@@ -24,6 +24,7 @@
 // SUCH DAMAGE.
 //
 
+use std::f32::consts::E;
 use std::io;
 use std::io::{Seek, SeekFrom, Write};
 
@@ -168,6 +169,9 @@ impl<'a> Writer<'a> {
                     Context::Exif => ifd.exif_fields.push(field),
                     Context::Gps => ifd.gps_fields.push(field),
                     Context::Interop => ifd.interop_fields.push(field),
+                    Context::Fuji_Raf => {
+                        panic!("Unsupported Fuji_Raf context for writing: {:?}", field.tag)
+                    }
                 }
             }
         }

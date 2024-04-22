@@ -25,7 +25,7 @@
 //
 
 use std::io::Read as _;
-use std::io::{self, Seek, SeekFrom};
+use std::io::{self};
 
 use crate::error::Error;
 

@@ -1,10 +1,14 @@
-use std::io::{BufRead, BufReader, ErrorKind};
+use std::io::{BufRead, BufReader, ErrorKind, Read};
 
+use crate::endian::{BigEndian, Endian, LittleEndian};
 use crate::error::Error;
+use crate::ifd::IfdEntry;
+use crate::parser::{self, Parse};
 use crate::util::{read16, read32, read8, BufReadExt as _, ReadExt as _};
-use crate::{Field, Tag};
+use crate::{jpeg, Context, Exif, Field, In, Tag, Value};
 
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
+use crate::tag::{d_default, UnitPiece};
+use byteorder::ReadBytesExt;
 use std::collections::BTreeMap;
 use std::f32::NAN;
 use std::io::Cursor;
@@ -15,6 +19,12 @@ use std::io::{self, Seek};
 
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+
+const TIFF_BE: u16 = 0x4d4d;
+const TIFF_LE: u16 = 0x4949;
+const TIFF_FORTY_TWO: u16 = 0x002a;
+pub const TIFF_BE_SIG: [u8; 4] = [0x4d, 0x4d, 0x00, 0x2a];
+pub const TIFF_LE_SIG: [u8; 4] = [0x49, 0x49, 0x2a, 0x00];
 
 /*
 Based on the following: http://fileformats.archiveteam.org/wiki/Fujifilm_RAF
@@ -49,27 +59,6 @@ Based on the following: http://fileformats.archiveteam.org/wiki/Fujifilm_RAF
 *** CFA Offset
 **** Uncompressed RAW
 */
-
-macro_rules! tiff_tag_enum {
-    ($e:ty) => {
-        impl From<$e> for u16 {
-            fn from(val: $e) -> u16 {
-                val as u16
-            }
-        }
-        impl TryFrom<u16> for $e {
-            type Error = String;
-
-            fn try_from(value: u16) -> std::result::Result<Self, Self::Error> {
-                Self::n(value).ok_or(format!(
-                    "Unable to convert tag: {}, not defined in enum",
-                    value
-                ))
-            }
-        }
-        impl crate::tags::TiffTag for $e {}
-    };
-}
 
 mod marker {
     // The first byte of a marker
@@ -191,123 +180,348 @@ pub enum FujiIFD {
     VignettingParams = 0xf010,
 }
 
+generate_well_known_tag_constants!(
+    // Fuji Specific Tags
+    |Context::Fuji_Raf| #[doc(hidden)]
+    (
+        RawImageFullSize,
+        0x0100,
+        DefaultValue::None,
+        d_default,
+        unit!["pixels"],
+        "Raw Image Full Size"
+    ),
+    (
+        RawImageCropTopLeft,
+        0x0110,
+        DefaultValue::None,
+        d_default,
+        unit!["pixels"],
+        "Raw Image Crop Top Left"
+    ),
+    (
+        RawImageCroppedSize,
+        0x0111,
+        DefaultValue::None,
+        d_default,
+        unit!["pixels"],
+        "Raw Image Cropped Size"
+    ),
+    (
+        RawImageAspectRatio,
+        0x0115,
+        DefaultValue::None,
+        d_default,
+        unit!["ratio"],
+        "Raw Image Aspect Ratio"
+    ),
+    (
+        RawImageSize,
+        0x0121,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "Raw Image Size"
+    ),
+    (
+        FujiLayout,
+        0x0130,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "Fuji Layout"
+    ),
+    (
+        XTransLayout,
+        0x0131,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "XTrans Layout"
+    ),
+    (
+        WB_GRGBLevels,
+        0x2ff0,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "WB GRGB Levels"
+    ),
+    (
+        RelativeExposure,
+        0x9200,
+        DefaultValue::None,
+        d_default,
+        unit!["EV"],
+        "Relative Exposure"
+    ),
+    (
+        RawExposureBias,
+        0x9650,
+        DefaultValue::None,
+        d_default,
+        unit!["EV"],
+        "Raw Exposure Bias"
+    ),
+    (
+        RAFData,
+        0xc000,
+        DefaultValue::None,
+        d_default,
+        unit!["bytes"],
+        "RAF Data"
+    ),
+);
+
 /// These are only related to the additional RAF-tags in RAF files
-#[derive(Debug, Copy, Clone, PartialEq, enumn::N, FromPrimitive)]
-#[repr(u16)]
-#[allow(non_camel_case_types)]
-pub enum RafTags {
-    RawImageFullSize = 0x0100,
-    RawImageCropTopLeft = 0x0110,
-    RawImageCroppedSize = 0x0111,
-    RawImageAspectRatio = 0x0115,
-    RawImageSize = 0x0121,
-    FujiLayout = 0x0130,
-    XTransLayout = 0x0131,
-    WB_GRGBLevels = 0x2ff0,
-    RelativeExposure = 0x9200,
-    RawExposureBias = 0x9650,
-    RAFData = 0xc000,
+// #[derive(Debug, Copy, Clone, PartialEq, enumn::N, FromPrimitive)]
+// #[repr(u16)]
+// #[allow(non_camel_case_types)]
+// pub enum RafTags {
+//     RawImageFullSize = 0x0100,
+//     RawImageCropTopLeft = 0x0110,
+//     RawImageCroppedSize = 0x0111,
+//     RawImageAspectRatio = 0x0115,
+//     RawImageSize = 0x0121,
+//     FujiLayout = 0x0130,
+//     XTransLayout = 0x0131,
+//     WB_GRGBLevels = 0x2ff0,
+//     RelativeExposure = 0x9200,
+//     RawExposureBias = 0x9650,
+//     RAFData = 0xc000,
+// }
+
+#[derive(Debug)]
+pub struct FujiParser {
+    pub jpeg_exif: Option<Exif>,
+}
+
+impl Default for FujiParser {
+    fn default() -> Self {
+        Self { jpeg_exif: None }
+    }
 }
 
 pub fn is_fuji_raf(buf: &[u8]) -> bool {
     buf[0..8] == b"FUJIFILM"[..]
 }
 
-pub fn parse_fuji_raw<R>(reader: &mut R) -> Result<Vec<u8>, Error>
+impl FujiParser {
+    pub fn parse<R>(&mut self, reader: &mut R) -> Result<(), Error>
+    where
+        R: io::BufRead + io::Seek,
+    {
+        self.jpeg_exif = extract_jpeg_exif(reader).ok();
+
+        // let _ = self.parse_sub(data, marker::TIFF1_JPEG_PTR_OFFSET + 12);
+        self.parse_fuji_raw(reader)?;
+
+        // IFD0 loading
+        Ok(())
+    }
+
+    fn parse_sub(&mut self, data: &[u8], offset: usize) -> Result<(), Error> {
+        match BigEndian::loadu16(data, offset as usize) {
+            TIFF_BE => {
+                println!("BigEndian");
+                // self.parse_sub::<BigEndian>(data)
+            }
+            TIFF_LE => {
+                println!("LittleEndian");
+                // self.parse_sub::<LittleEndian>(data)
+            } // _ => Err(Error::InvalidFormat("Invalid TIFF byte order")),
+            _ => println!("IFD has no endian message"),
+        }
+        Ok(())
+    }
+
+    /// RAF format contains multiple TIFF and TIFF-like structures.
+    /// This creates an IFD with all other IFD's found as sub IFD's.
+    fn parse_fuji_raw<R>(&mut self, reader: &mut R) -> Result<Exif, Error>
+    where
+        R: BufRead + Seek,
+    {
+        reader.seek(std::io::SeekFrom::Start(
+            marker::TIFF1_JPEG_PTR_OFFSET as u64,
+        ))?;
+        let ifd_offset = read32(reader).expect("Failed to read ifd_offset");
+
+        reader.seek(std::io::SeekFrom::Start((ifd_offset + 12) as u64))?;
+        // Main IFD
+        let little_endian = match read16(reader) {
+            Ok(0x4949) => true,
+            Ok(0x4d4d) => false,
+            _ => return Err(Error::NotFound("Invalid endian")),
+        };
+
+        reader.seek(std::io::SeekFrom::Start(marker::TIFF2_PTR_OFFSET as u64))?;
+
+        let second_ifd_offset = read32(reader).expect("Failed to read second_ifd_offset");
+
+        // Read the primary RAF tags. JPEG exif tags will be read later.
+        reader
+            .seek(std::io::SeekFrom::Start(marker::TAGS_PTR_OFFSET as u64))
+            .expect("Failed to seek to TAGS_PTR_OFFSET");
+
+        let raf_offset = read32(reader).expect("Failed to read raf_offset");
+
+        reader.seek(SeekFrom::Start(raf_offset as u64))?;
+        let num_tags = read32(reader).expect("Failed to read num_tags");
+
+        let mut entries = Vec::new();
+        for _ in 0..num_tags {
+            let tag_value = read16(reader).expect("Failed to read tag");
+            let len = read16(reader).expect("Failed to read len") as usize;
+
+            let tag = Tag(Context::Fuji_Raf, tag_value);
+
+            match tag {
+                Tag::RawImageFullSize
+                | Tag::RawImageCropTopLeft
+                | Tag::RawImageCroppedSize
+                | Tag::RawImageAspectRatio
+                | Tag::WB_GRGBLevels => {
+                    let n = len / size_of::<u16>();
+                    // let entry = Entry {
+                    //     tag,
+                    //     value: Value::Short(
+                    //         (0..n)
+                    //             .map(|_| reader.read_u16::<BigEndian>())
+                    //             .collect::<std::io::Result<Vec<_>>>()?,
+                    //     ),
+                    //     embedded: None,
+                    // };
+
+                    // println!(
+                    //     "Tag: {:?}, Value: {:?}",
+                    //     tag,
+                    //     (0..n)
+                    //         .map(|_| reader.read_u16::<BigEndian>())
+                    //         .collect::<std::io::Result<Vec<_>>>()?
+                    // );
+                    entries.push(IfdEntry {
+                        field: Field {
+                            tag: tag,
+                            ifd_num: In(0),
+                            value: Value::Short(
+                                (0..n)
+                                    .map(|_| reader.read_u16::<byteorder::BigEndian>())
+                                    .collect::<std::io::Result<Vec<_>>>()?,
+                            ),
+                        }
+                        .into(),
+                    });
+                }
+                Tag::FujiLayout | Tag::XTransLayout => {
+                    let n = len / size_of::<u8>();
+                    // let entry = Entry {
+                    //     tag,
+                    //     value: Value::Byte(
+                    //         (0..n)
+                    //             .map(|_| reader.read_u8())
+                    //             .collect::<std::io::Result<Vec<_>>>()?,
+                    //     ),
+                    //     embedded: None,
+                    // };
+                    entries.push(IfdEntry {
+                        field: Field {
+                            tag: tag,
+                            ifd_num: In(0),
+                            value: Value::Byte(
+                                (0..n)
+                                    .map(|_| reader.read_u8())
+                                    .collect::<std::io::Result<Vec<_>>>()?,
+                            ),
+                        }
+                        .into(),
+                    });
+                }
+                // This one is in other byte-order...
+                Tag::RAFData => {
+                    let n = len / size_of::<u32>();
+                    // let entry = Entry {
+                    //     tag,
+                    //     value: Value::Long(
+                    //         (0..n)
+                    //             .map(|_| reader.read_u32::<LittleEndian>())
+                    //             .collect::<std::io::Result<Vec<_>>>()?,
+                    //     ),
+                    //     embedded: None,
+                    // };
+
+                    // println!(
+                    //     "Tag: {:?}, Value: {:?}",
+                    //     tag,
+                    //     (0..n)
+                    //         .map(|_| reader.read_u32::<LittleEndian>())
+                    //         .collect::<std::io::Result<Vec<_>>>()?
+                    // );
+                    entries.push(IfdEntry {
+                        field: Field {
+                            tag: tag,
+                            ifd_num: In(0),
+                            value: Value::Long(
+                                (0..n)
+                                    .map(|_| reader.read_u32::<byteorder::LittleEndian>())
+                                    .collect::<std::io::Result<Vec<_>>>()?,
+                            ),
+                        }
+                        .into(),
+                    });
+                }
+                // Skip other tags
+                _ => {
+                    reader.seek(SeekFrom::Current(len as i64))?;
+                }
+            }
+        }
+
+        let entry_map = entries
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (e.ifd_num_tag(), i))
+            .collect();
+
+        let exif = Exif {
+            buf: Vec::new(),
+            entries,
+            entry_map: entry_map,
+            little_endian: little_endian,
+        };
+
+        println!(
+            "----------------------------- START FUJI RAF TAGS ---------------------------------"
+        );
+
+        for f in exif.fields() {
+            println!(
+                "  {}/{}: {}",
+                f.ifd_num.index(),
+                f.tag,
+                f.display_value().with_unit(&exif)
+            );
+            println!("      {:?}", f.value);
+        }
+
+        println!(
+            "----------------------------- END FUJI RAF TAGS ---------------------------------"
+        );
+
+        Ok(exif)
+    }
+}
+
+fn extract_jpeg_exif<R>(reader: &mut R) -> Result<Exif, Error>
 where
     R: BufRead + Seek,
 {
-    // Read the primary RAF tags. JPEG exif tags will be read later.
-    reader
-        .seek(std::io::SeekFrom::Start(marker::TAGS_PTR_OFFSET as u64))
-        .expect("Failed to seek to TAGS_PTR_OFFSET");
-
-    let raf_offset = read32(reader).expect("Failed to read raf_offset");
-
-    reader.seek(SeekFrom::Start(raf_offset as u64))?;
-    let num_tags = read32(reader).expect("Failed to read num_tags");
-
-    for _ in 0..num_tags {
-        let tag = read16(reader).expect("Failed to read tag");
-        let len = read16(reader).expect("Failed to read len") as usize;
-
-        match RafTags::from_u16(tag) {
-            Some(RafTags::RawImageFullSize)
-            | Some(RafTags::RawImageCropTopLeft)
-            | Some(RafTags::RawImageCroppedSize)
-            | Some(RafTags::RawImageAspectRatio)
-            | Some(RafTags::WB_GRGBLevels) => {
-                let n = len / size_of::<u16>();
-                // let entry = Entry {
-                //     tag,
-                //     value: Value::Short(
-                //         (0..n)
-                //             .map(|_| reader.read_u16::<BigEndian>())
-                //             .collect::<std::io::Result<Vec<_>>>()?,
-                //     ),
-                //     embedded: None,
-                // };
-
-                println!(
-                    "Tag: {:?}, Value: {:?}",
-                    tag,
-                    (0..n)
-                        .map(|_| reader.read_u16::<BigEndian>())
-                        .collect::<std::io::Result<Vec<_>>>()?
-                );
-            }
-            Some(RafTags::FujiLayout) | Some(RafTags::XTransLayout) => {
-                let n = len / size_of::<u8>();
-                // let entry = Entry {
-                //     tag,
-                //     value: Value::Byte(
-                //         (0..n)
-                //             .map(|_| reader.read_u8())
-                //             .collect::<std::io::Result<Vec<_>>>()?,
-                //     ),
-                //     embedded: None,
-                // };
-
-                println!(
-                    "Tag: {:?}, Value: {:?}",
-                    tag,
-                    (0..n)
-                        .map(|_| reader.read_u8())
-                        .collect::<std::io::Result<Vec<_>>>()?
-                );
-            }
-            // This one is in other byte-order...
-            Some(RafTags::RAFData) => {
-                let n = len / size_of::<u32>();
-                // let entry = Entry {
-                //     tag,
-                //     value: Value::Long(
-                //         (0..n)
-                //             .map(|_| reader.read_u32::<LittleEndian>())
-                //             .collect::<std::io::Result<Vec<_>>>()?,
-                //     ),
-                //     embedded: None,
-                // };
-
-                println!(
-                    "Tag: {:?}, Value: {:?}",
-                    tag,
-                    (0..n)
-                        .map(|_| reader.read_u32::<LittleEndian>())
-                        .collect::<std::io::Result<Vec<_>>>()?
-                );
-            }
-            // Skip other tags
-            _ => {
-                reader.seek(SeekFrom::Current(len as i64))?;
-            }
-        }
-    }
-
-    get_exif_attr_sub(reader)
+    let jpeg_thumbnail = extract_jpeg_thumbnail(reader)?;
+    let jpeg_exif_offset_buffer = jpeg::get_exif_attr(&mut jpeg_thumbnail.chain(reader))?;
+    let jpeg_exif = read_raw(jpeg_exif_offset_buffer)?;
+    Ok(jpeg_exif)
 }
 
-pub fn get_exif_attr_sub<R>(reader: &mut R) -> Result<Vec<u8>, Error>
+fn extract_jpeg_thumbnail<R>(reader: &mut R) -> Result<Vec<u8>, Error>
 where
     R: BufRead + Seek,
 {
@@ -333,77 +547,21 @@ where
     Ok(embedded_jpeg)
 }
 
-// /// Get the Exif attribute information segment from a JPEG file.
-// pub fn parse_fuji_raw_old<R>(reader: &mut R)
-// where
-//     R: BufRead,
-// {
-//     let mut bytes_to_read = [0u8; marker::TIFF1_PTR_OFFSET];
-
-//     let _ = reader.read_exact(&mut bytes_to_read);
-
-//     let num_ifd_entries = read32(reader).ok().unwrap();
-
-//     println!("num_ifd_entries: {:?}", num_ifd_entries);
-
-//     for _ in 0..num_ifd_entries {
-//         let tag_code = read16(reader).unwrap();
-//         let len = read16(reader).unwrap_or(0) as usize;
-//         if let Some(tag) = RafTags::from_u16(tag_code) {
-//             match tag {
-//                 RafTags::RawImageFullSize
-//                 | RafTags::RawImageCropTopLeft
-//                 | RafTags::RawImageCroppedSize
-//                 | RafTags::RawImageAspectRatio
-//                 | RafTags::WB_GRGBLevels => {
-//                     println!("tag: {:?}, len: {}", tag, len);
-//                     // let n = len / size_of::<u16>();
-//                     // let entry = Entry {
-//                     //     tag,
-//                     //     value: Value::Short(
-//                     //         (0..n)
-//                     //             .map(|_| stream.read_u16::<BigEndian>())
-//                     //             .collect::<std::io::Result<Vec<_>>>()?,
-//                     //     ),
-//                     //     embedded: None,
-//                     // };
-//                     // entries.insert(tag, entry);
-//                 }
-//                 RafTags::FujiLayout | RafTags::XTransLayout => {
-//                     println!("tag: {:?}, len: {}", tag, len);
-//                     // let n = len / size_of::<u8>();
-//                     // let entry = Entry {
-//                     //     tag,
-//                     //     value: Value::Byte(
-//                     //         (0..n)
-//                     //             .map(|_| stream.read_u8())
-//                     //             .collect::<std::io::Result<Vec<_>>>()?,
-//                     //     ),
-//                     //     embedded: None,
-//                     // };
-//                     // entries.insert(tag, entry);
-//                 }
-//                 // This one is in other byte-order...
-//                 RafTags::RAFData => {
-//                     println!("tag: {:?}, len: {}", tag, len);
-//                     // let n = len / size_of::<u32>();
-//                     // let entry = Entry {
-//                     //     tag,
-//                     //     value: Value::Long(
-//                     //         (0..n)
-//                     //             .map(|_| stream.read_u32::<LittleEndian>())
-//                     //             .collect::<std::io::Result<Vec<_>>>()?,
-//                     //     ),
-//                     //     embedded: None,
-//                     // };
-//                     // entries.insert(tag, entry);
-//                 }
-//                 // Skip other tags
-//                 _ => {
-//                     // stream.seek(SeekFrom::Current(len as i64))?;
-//                     println!("tag: {:?}, len: {}", tag, len);
-//                 }
-//             }
-//         }
-//     }
-// }
+/// Parses the Exif attributes from raw Exif data.
+/// If an error occurred, `exif::Error` is returned.
+fn read_raw(data: Vec<u8>) -> Result<Exif, Error> {
+    let mut parser = parser::Parser::default();
+    parser.parse(&data)?;
+    let entry_map = parser
+        .entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.ifd_num_tag(), i))
+        .collect();
+    Ok(Exif {
+        buf: data,
+        entries: parser.entries,
+        entry_map: entry_map,
+        little_endian: parser.little_endian,
+    })
+}

@@ -90,9 +90,10 @@
 //! See the [upgrade guide](doc::upgrade) for API incompatibilities.
 
 pub use error::Error;
+pub use exif::Exif;
 pub use ifd::{DateTime, Field, In};
 pub use jpeg::get_exif_attr as get_exif_attr_from_jpeg;
-pub use reader::{Exif, Reader};
+pub use reader::Reader;
 pub use tag::{Context, Tag};
 pub use tiff::parse_exif;
 pub use value::Value;
@@ -110,14 +111,17 @@ mod tmacro;
 pub mod doc;
 mod endian;
 mod error;
-mod fuji;
+pub mod exif;
 pub mod ifd;
 mod isobmff;
 mod jpeg;
 mod parser;
 mod png;
 mod reader;
+#[macro_use]
 mod tag;
+
+mod fuji;
 mod tiff;
 mod util;
 mod value;

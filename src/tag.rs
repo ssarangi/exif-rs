@@ -31,6 +31,13 @@ use crate::util::atou16;
 use crate::value;
 use crate::value::Value;
 
+#[derive(Debug)]
+pub enum UnitPiece {
+    Value,
+    Str(&'static str),
+    Tag(Tag),
+}
+
 /// A tag of a TIFF/Exif field.
 ///
 /// Some well-known tags are provided as associated constants of
@@ -124,13 +131,9 @@ pub enum Context {
     Gps, // -- GPS IFD
     /// Interoperability attributes.
     Interop, // -- Exif IFD -- Interoperability IFD
-}
 
-#[derive(Debug)]
-pub enum UnitPiece {
-    Value,
-    Str(&'static str),
-    Tag(Tag),
+    /// Fuji Specific Context
+    Fuji_Raf,
 }
 
 macro_rules! unit {
@@ -144,13 +147,13 @@ macro_rules! unit_expand {
     ( $($built:expr),* ; ) => ( &[$($built),*] );
     ( $($built:expr),* ; , ) => ( &[$($built),*] );
     ( $($built:expr),* ; V, $($rest:tt)* ) => (
-        unit_expand!($($built,)* UnitPiece::Value ; $($rest)*) );
+        unit_expand!($($built,)* crate::tag::UnitPiece::Value ; $($rest)*) );
     ( $($built:expr),* ; $str:literal, $($rest:tt)* ) => (
-        unit_expand!($($built,)* UnitPiece::Str($str) ; $($rest)*) );
+        unit_expand!($($built,)* crate::tag::UnitPiece::Str($str) ; $($rest)*) );
     ( $($built:expr),* ; concat!($($strs:literal),*), $($rest:tt)* ) => (
-        unit_expand!($($built,)* UnitPiece::Str(concat!($($strs),*)) ; $($rest)*) );
+        unit_expand!($($built,)* crate::tag::UnitPiece::Str(concat!($($strs),*)) ; $($rest)*) );
     ( $($built:expr),* ; Tag::$tag:ident, $($rest:tt)* ) => (
-        unit_expand!($($built,)* UnitPiece::Tag(Tag::$tag) ; $($rest)*) );
+        unit_expand!($($built,)* crate::tag::UnitPiece::Tag(crate::tag::Tag::$tag) ; $($rest)*) );
 }
 
 macro_rules! generate_well_known_tag_constants {
@@ -184,14 +187,13 @@ macro_rules! generate_well_known_tag_constants {
             use std::fmt;
             use crate::value::Value;
             use crate::value::DefaultValue;
-            use super::{Tag, UnitPiece};
 
             pub struct TagInfo {
                 pub name: &'static str,
                 pub desc: &'static str,
                 pub default: DefaultValue,
                 pub dispval: fn(&mut dyn fmt::Write, &Value) -> fmt::Result,
-                pub unit: Option<&'static [UnitPiece]>,
+                pub unit: Option<&'static [crate::tag::UnitPiece]>,
             }
 
             $($(
@@ -2202,7 +2204,7 @@ fn d_reserved(w: &mut dyn fmt::Write, value: &Value, name: &str) -> fmt::Result 
     w.write_char(']')
 }
 
-fn d_default(w: &mut dyn fmt::Write, value: &Value) -> fmt::Result {
+pub fn d_default(w: &mut dyn fmt::Write, value: &Value) -> fmt::Result {
     match *value {
         Value::Byte(ref v) => d_sub_comma(w, v),
         Value::Ascii(ref v) => d_sub_comma(w, v.iter().map(|x| AsciiDisplay(x))),

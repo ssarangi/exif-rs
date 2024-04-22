@@ -29,7 +29,9 @@ use std::io;
 use std::io::Read;
 
 use crate::error::Error;
+use crate::exif::Exif;
 use crate::fuji;
+use crate::fuji::FujiParser;
 use crate::ifd::IfdEntry;
 use crate::ifd::ProvideUnit;
 use crate::isobmff;
@@ -92,6 +94,17 @@ impl Reader {
         })
     }
 
+    /// Parses the Exif attributes from raw Exif data.
+    /// If an error occurred, `exif::Error` is returned.
+    pub fn read_fuji_raw<R>(&self, reader: &mut R) -> Result<Exif, Error>
+    where
+        R: io::BufRead + io::Seek,
+    {
+        let mut parser = FujiParser::default();
+        parser.parse(reader)?;
+        Ok(parser.jpeg_exif.unwrap())
+    }
+
     /// Reads an image file and parses the Exif attributes in it.
     /// If an error occurred, `exif::Error` is returned.
     ///
@@ -113,9 +126,11 @@ impl Reader {
         if tiff::is_tiff(&buf) {
             reader.read_to_end(&mut buf)?;
         } else if fuji::is_fuji_raf(&buf) {
-            reader.seek(io::SeekFrom::Start(0))?;
-            buf = fuji::parse_fuji_raw(reader)?;
-            buf = jpeg::get_exif_attr(&mut buf.chain(reader))?; // JPEG in RAF
+            // reader.seek(io::SeekFrom::Start(0))?;
+            // buf = fuji::parse_fuji_raw(reader)?;
+            // buf = jpeg::get_exif_attr(&mut buf.chain(reader))?; // JPEG in RAF
+            // println!("buf: {:?}", buf[0..3]);
+            return self.read_fuji_raw(reader);
         } else if jpeg::is_jpeg(&buf) {
             buf = jpeg::get_exif_attr(&mut buf.chain(reader))?;
         } else if png::is_png(&buf) {
@@ -130,76 +145,6 @@ impl Reader {
         }
 
         self.read_raw(buf)
-    }
-}
-
-/// A struct that holds the parsed Exif attributes.
-///
-/// # Examples
-/// ```
-/// # fn main() { sub(); }
-/// # fn sub() -> Option<()> {
-/// # use exif::{In, Reader, Tag};
-/// # let file = std::fs::File::open("tests/exif.jpg").unwrap();
-/// # let exif = Reader::new().read_from_container(
-/// #     &mut std::io::BufReader::new(&file)).unwrap();
-/// // Get a specific field.
-/// let xres = exif.get_field(Tag::XResolution, In::PRIMARY)?;
-/// assert_eq!(xres.display_value().with_unit(&exif).to_string(),
-///            "72 pixels per inch");
-/// // Iterate over all fields.
-/// for f in exif.fields() {
-///     println!("{} {} {}", f.tag, f.ifd_num, f.display_value());
-/// }
-/// # Some(()) }
-/// ```
-pub struct Exif {
-    // TIFF data.
-    buf: Vec<u8>,
-    // Exif fields.  Vec is used to keep the ability to enumerate all fields
-    // even if there are duplicates.
-    entries: Vec<IfdEntry>,
-    // HashMap to the index of the Vec for faster random access.
-    entry_map: HashMap<(In, Tag), usize>,
-    // True if the TIFF data is little endian.
-    little_endian: bool,
-}
-
-impl Exif {
-    /// Returns the slice that contains the TIFF data.
-    #[inline]
-    pub fn buf(&self) -> &[u8] {
-        &self.buf[..]
-    }
-
-    /// Returns an iterator of Exif fields.
-    #[inline]
-    pub fn fields(&self) -> impl ExactSizeIterator<Item = &Field> {
-        self.entries
-            .iter()
-            .map(move |e| e.ref_field(&self.buf, self.little_endian))
-    }
-
-    /// Returns true if the Exif data (TIFF structure) is in the
-    /// little-endian byte order.
-    #[inline]
-    pub fn little_endian(&self) -> bool {
-        self.little_endian
-    }
-
-    /// Returns a reference to the Exif field specified by the tag
-    /// and the IFD number.
-    #[inline]
-    pub fn get_field(&self, tag: Tag, ifd_num: In) -> Option<&Field> {
-        self.entry_map
-            .get(&(ifd_num, tag))
-            .map(|&i| self.entries[i].ref_field(&self.buf, self.little_endian))
-    }
-}
-
-impl<'a> ProvideUnit<'a> for &'a Exif {
-    fn get_field(self, tag: Tag, ifd_num: In) -> Option<&'a Field> {
-        self.get_field(tag, ifd_num)
     }
 }
 
