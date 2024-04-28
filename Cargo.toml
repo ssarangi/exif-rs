@@ -15,7 +15,6 @@ categories = ["multimedia::encoding", "multimedia::images", "parser-implementati
 license = "BSD-2-Clause"
 
 [dependencies]
-mutate_once = "0.1.1"
 enumn = "0.1.0"
 byteorder = "1.4.3"
 num-traits = "0.2"

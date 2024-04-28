@@ -1,6 +1,6 @@
 use std::fmt;
 
-use mutate_once::MutOnce;
+use crate::MutOnce;
 
 use crate::{
     endian::{BigEndian, Endian, LittleEndian},
