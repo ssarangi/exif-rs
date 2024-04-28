@@ -1,5 +1,7 @@
 use std::fmt;
 
+use chrono::TimeZone;
+
 use crate::MutOnce;
 
 use crate::{
@@ -217,6 +219,53 @@ impl DateTime {
             _ => return Err(Error::InvalidFormat("Invalid OffsetTime sign")),
         });
         Ok(())
+    }
+
+    /// Converts the DateTime struct to a chrono DateTime<Utc> object.
+    /// This assumes the offset is already applied to the DateTime.
+    /// Converts the DateTime struct to a chrono DateTime<Utc> object.
+    /// This uses the stored offset to convert the local datetime to UTC.
+    pub fn to_chrono_datetime(&self) -> Result<chrono::DateTime<chrono::Utc>, &'static str> {
+        // Check if all necessary components are available
+        {
+            // Create a NaiveDateTime from the year, month, day, hour, minute, and second
+            let naive_datetime = chrono::NaiveDate::from_ymd_opt(
+                self.year as i32,
+                self.month as u32,
+                self.day as u32,
+            )
+            .and_then(|date| {
+                chrono::NaiveTime::from_hms_opt(
+                    self.hour as u32,
+                    self.minute as u32,
+                    self.second as u32,
+                )
+                .map(|time| date.and_time(time))
+            });
+
+            // If the naive datetime is valid, process the offset
+            if let Some(naive_dt) = naive_datetime {
+                // Check for an offset and adjust the naive datetime to UTC
+                if let Some(offset_minutes) = self.offset {
+                    // Convert offset minutes into a FixedOffset
+                    let fixed_offset =
+                        chrono::FixedOffset::east_opt(((offset_minutes * 60) as i32).into());
+                    if let Some(fixed_offset) = fixed_offset {
+                        // Apply the fixed offset to the naive datetime and convert it to UTC
+                        let local_dt = fixed_offset.from_local_datetime(&naive_dt).single();
+                        if let Some(local_dt) = local_dt {
+                            return Ok(local_dt.with_timezone(&chrono::Utc));
+                        }
+                    }
+                } else {
+                    // If no offset, assume the datetime is already in UTC
+                    return Ok(chrono::Utc.from_utc_datetime(&naive_dt));
+                }
+            }
+        }
+
+        // Return an error if any component is invalid or missing
+        Err("Invalid date or time components")
     }
 }
 
