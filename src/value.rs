@@ -175,12 +175,15 @@ impl Value {
     #[inline]
     pub fn iter_uint(&self) -> Option<UIntIter> {
         match *self {
-            Value::Byte(ref v) =>
-                Some(UIntIter { iter: Box::new(v.iter().map(|&x| x as u32)) }),
-            Value::Short(ref v) =>
-                Some(UIntIter { iter: Box::new(v.iter().map(|&x| x as u32)) }),
-            Value::Long(ref v) =>
-                Some(UIntIter { iter: Box::new(v.iter().map(|&x| x)) }),
+            Value::Byte(ref v) => Some(UIntIter {
+                iter: Box::new(v.iter().map(|&x| x as u32)),
+            }),
+            Value::Short(ref v) => Some(UIntIter {
+                iter: Box::new(v.iter().map(|&x| x as u32)),
+            }),
+            Value::Long(ref v) => Some(UIntIter {
+                iter: Box::new(v.iter().map(|&x| x)),
+            }),
             _ => None,
         }
     }
@@ -202,8 +205,9 @@ impl UIntValue {
     #[inline]
     fn ref_from(v: &Value) -> Result<&Self, Error> {
         match *v {
-            Value::Byte(_) | Value::Short(_) | Value::Long(_) =>
-                Ok(unsafe { &*(v as *const Value as *const Self) }),
+            Value::Byte(_) | Value::Short(_) | Value::Long(_) => {
+                Ok(unsafe { &*(v as *const Value as *const Self) })
+            }
             _ => Err(Error::UnexpectedValue("Not unsigned integer")),
         }
     }
@@ -221,7 +225,7 @@ impl UIntValue {
 
 // A struct that wraps std::slice::Iter<'a, u8/u16/u32>.
 pub struct UIntIter<'a> {
-    iter: Box<dyn ExactSizeIterator<Item=u32> + 'a>
+    iter: Box<dyn ExactSizeIterator<Item = u32> + 'a>,
 }
 
 impl<'a> Iterator for UIntIter<'a> {
@@ -258,25 +262,30 @@ impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Byte(v) => f.debug_tuple("Byte").field(v).finish(),
-            Self::Ascii(v) => f.debug_tuple("Ascii")
-                .field(&IterDebugAdapter(
-                    || v.iter().map(|x| AsciiDebugAdapter(x)))).finish(),
+            Self::Ascii(v) => f
+                .debug_tuple("Ascii")
+                .field(&IterDebugAdapter(|| v.iter().map(|x| AsciiDebugAdapter(x))))
+                .finish(),
             Self::Short(v) => f.debug_tuple("Short").field(v).finish(),
             Self::Long(v) => f.debug_tuple("Long").field(v).finish(),
             Self::Rational(v) => f.debug_tuple("Rational").field(v).finish(),
             Self::SByte(v) => f.debug_tuple("SByte").field(v).finish(),
-            Self::Undefined(v, o) => f.debug_tuple("Undefined")
+            Self::Undefined(v, o) => f
+                .debug_tuple("Undefined")
                 .field(&HexDebugAdapter(v))
-                .field(&format_args!("ofs={:#x}", o)).finish(),
+                .field(&format_args!("ofs={:#x}", o))
+                .finish(),
             Self::SShort(v) => f.debug_tuple("SShort").field(v).finish(),
             Self::SLong(v) => f.debug_tuple("SLong").field(v).finish(),
             Self::SRational(v) => f.debug_tuple("SRational").field(v).finish(),
             Self::Float(v) => f.debug_tuple("Float").field(v).finish(),
             Self::Double(v) => f.debug_tuple("Double").field(v).finish(),
-            Self::Unknown(t, c, oo) => f.debug_tuple("Unknown")
+            Self::Unknown(t, c, oo) => f
+                .debug_tuple("Unknown")
                 .field(&format_args!("typ={}", t))
                 .field(&format_args!("cnt={}", c))
-                .field(&format_args!("ofs={:#x}", oo)).finish(),
+                .field(&format_args!("ofs={:#x}", oo))
+                .finish(),
         }
     }
 }
@@ -284,7 +293,11 @@ impl fmt::Debug for Value {
 struct IterDebugAdapter<F>(F);
 
 impl<F, T, I> fmt::Debug for IterDebugAdapter<F>
-where F: Fn() -> T, T: Iterator<Item = I>, I: fmt::Debug {
+where
+    F: Fn() -> T,
+    T: Iterator<Item = I>,
+    I: fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_list().entries(self.0()).finish()
     }
@@ -332,13 +345,12 @@ impl From<&DefaultValue> for Option<Value> {
         match *defval {
             DefaultValue::None => None,
             DefaultValue::Byte(s) => Some(Value::Byte(s.to_vec())),
-            DefaultValue::Ascii(s) => Some(Value::Ascii(
-                s.iter().map(|&x| x.to_vec()).collect())),
+            DefaultValue::Ascii(s) => Some(Value::Ascii(s.iter().map(|&x| x.to_vec()).collect())),
             DefaultValue::Short(s) => Some(Value::Short(s.to_vec())),
-            DefaultValue::Rational(s) => Some(Value::Rational(
-                s.iter().map(|&x| x.into()).collect())),
-            DefaultValue::Undefined(s) => Some(Value::Undefined(
-                s.to_vec(), 0)),
+            DefaultValue::Rational(s) => {
+                Some(Value::Rational(s.iter().map(|&x| x.into()).collect()))
+            }
+            DefaultValue::Undefined(s) => Some(Value::Undefined(s.to_vec(), 0)),
             DefaultValue::ContextDependent => None,
             DefaultValue::Unspecified => None,
         }
@@ -347,7 +359,10 @@ impl From<&DefaultValue> for Option<Value> {
 
 /// An unsigned rational number, which is a pair of 32-bit unsigned integers.
 #[derive(Copy, Clone)]
-pub struct Rational { pub num: u32, pub denom: u32 }
+pub struct Rational {
+    pub num: u32,
+    pub denom: u32,
+}
 
 impl Rational {
     /// Converts the value to an f32.
@@ -365,7 +380,10 @@ impl Rational {
 
 impl From<(u32, u32)> for Rational {
     fn from(t: (u32, u32)) -> Rational {
-        Rational { num: t.0, denom: t.1 }
+        Rational {
+            num: t.0,
+            denom: t.1,
+        }
     }
 }
 
@@ -385,7 +403,10 @@ impl fmt::Display for Rational {
 
 /// A signed rational number, which is a pair of 32-bit signed integers.
 #[derive(Copy, Clone)]
-pub struct SRational { pub num: i32, pub denom: i32 }
+pub struct SRational {
+    pub num: i32,
+    pub denom: i32,
+}
 
 impl SRational {
     /// Converts the value to an f32.
@@ -403,7 +424,10 @@ impl SRational {
 
 impl From<(i32, i32)> for SRational {
     fn from(t: (i32, i32)) -> SRational {
-        SRational { num: t.0, denom: t.1 }
+        SRational {
+            num: t.0,
+            denom: t.1,
+        }
     }
 }
 
@@ -416,37 +440,35 @@ impl fmt::Debug for SRational {
 impl fmt::Display for SRational {
     /// Formatting parameters other than width are not supported.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let buf = fmt_rational_sub(
-            f, self.num.wrapping_abs() as u32, self.denom);
+        let buf = fmt_rational_sub(f, self.num.wrapping_abs() as u32, self.denom);
         f.pad_integral(self.num >= 0, "", &buf)
     }
 }
 
 // Only u32 or i32 are expected for T.
-fn fmt_rational_sub<T>(f: &mut fmt::Formatter, num: u32, denom: T)
-                       -> String where T: fmt::Display {
+fn fmt_rational_sub<T>(f: &mut fmt::Formatter, num: u32, denom: T) -> String
+where
+    T: fmt::Display,
+{
     // The API to get the alignment is not yet stable as of Rust 1.16,
     // so it is not fully supported.
     match (f.sign_plus(), f.precision(), f.sign_aware_zero_pad()) {
-        (true, Some(prec), true) =>
-            format!("{}/{:+0w$}", num, denom, w = prec),
-        (true, Some(prec), false) =>
-            format!("{}/{:+w$}", num, denom, w = prec),
-        (true, None, _) =>
-            format!("{}/{:+}", num, denom),
-        (false, Some(prec), true) =>
-            format!("{}/{:0w$}", num, denom, w = prec),
-        (false, Some(prec), false) =>
-            format!("{}/{:w$}", num, denom, w = prec),
-        (false, None, _) =>
-            format!("{}/{}", num, denom),
+        (true, Some(prec), true) => format!("{}/{:+0w$}", num, denom, w = prec),
+        (true, Some(prec), false) => format!("{}/{:+w$}", num, denom, w = prec),
+        (true, None, _) => format!("{}/{:+}", num, denom),
+        (false, Some(prec), true) => format!("{}/{:0w$}", num, denom, w = prec),
+        (false, Some(prec), false) => format!("{}/{:w$}", num, denom, w = prec),
+        (false, None, _) => format!("{}/{}", num, denom),
     }
 }
 
 type Parser = fn(&[u8], usize, usize) -> Value;
 
 // Return the length of a single value and the parser of the type.
-pub fn get_type_info<E>(typecode: u16) -> (usize, Parser) where E: Endian {
+pub fn get_type_info<E>(typecode: u16) -> (usize, Parser)
+where
+    E: Endian,
+{
     match typecode {
         1 => (1, parse_byte),
         2 => (1, parse_ascii),
@@ -465,22 +487,24 @@ pub fn get_type_info<E>(typecode: u16) -> (usize, Parser) where E: Endian {
 }
 
 fn parse_byte(data: &[u8], offset: usize, count: usize) -> Value {
-    Value::Byte(data[offset .. offset + count].to_vec())
+    Value::Byte(data[offset..offset + count].to_vec())
 }
 
 fn parse_ascii(data: &[u8], offset: usize, count: usize) -> Value {
     // Any ASCII field can contain multiple strings [TIFF6 Image File
     // Directory].
-    let iter = (&data[offset .. offset + count]).split(|&b| b == b'\0');
-    let mut v: Vec<Vec<u8>> = iter.map(|x| x.to_vec()).collect();
-    if v.last().map_or(false, |x| x.len() == 0) {
-        v.pop();
-    }
+    let iter = (&data[offset..offset + count]).split(|&b| b == b'\0');
+    let v: Vec<Vec<u8>> = iter
+        .filter(|s| !s.is_empty()) // Filter out empty slices
+        .map(|x| x.to_vec())
+        .collect();
     Value::Ascii(v)
 }
 
-fn parse_short<E>(data: &[u8], offset: usize, count: usize)
-                  -> Value where E: Endian {
+fn parse_short<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(E::loadu16(data, offset + i * 2));
@@ -488,8 +512,10 @@ fn parse_short<E>(data: &[u8], offset: usize, count: usize)
     Value::Short(val)
 }
 
-fn parse_long<E>(data: &[u8], offset: usize, count: usize)
-                 -> Value where E: Endian {
+fn parse_long<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(E::loadu32(data, offset + i * 4));
@@ -497,8 +523,10 @@ fn parse_long<E>(data: &[u8], offset: usize, count: usize)
     Value::Long(val)
 }
 
-fn parse_rational<E>(data: &[u8], offset: usize, count: usize)
-                     -> Value where E: Endian {
+fn parse_rational<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(Rational {
@@ -510,17 +538,21 @@ fn parse_rational<E>(data: &[u8], offset: usize, count: usize)
 }
 
 fn parse_sbyte(data: &[u8], offset: usize, count: usize) -> Value {
-    let bytes = data[offset .. offset + count].iter()
-        .map(|x| *x as i8).collect();
+    let bytes = data[offset..offset + count]
+        .iter()
+        .map(|x| *x as i8)
+        .collect();
     Value::SByte(bytes)
 }
 
 fn parse_undefined(data: &[u8], offset: usize, count: usize) -> Value {
-    Value::Undefined(data[offset .. offset + count].to_vec(), offset as u32)
+    Value::Undefined(data[offset..offset + count].to_vec(), offset as u32)
 }
 
-fn parse_sshort<E>(data: &[u8], offset: usize, count: usize)
-                   -> Value where E: Endian {
+fn parse_sshort<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(E::loadu16(data, offset + i * 2) as i16);
@@ -528,8 +560,10 @@ fn parse_sshort<E>(data: &[u8], offset: usize, count: usize)
     Value::SShort(val)
 }
 
-fn parse_slong<E>(data: &[u8], offset: usize, count: usize)
-                  -> Value where E: Endian {
+fn parse_slong<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(E::loadu32(data, offset + i * 4) as i32);
@@ -537,8 +571,10 @@ fn parse_slong<E>(data: &[u8], offset: usize, count: usize)
     Value::SLong(val)
 }
 
-fn parse_srational<E>(data: &[u8], offset: usize, count: usize)
-                      -> Value where E: Endian {
+fn parse_srational<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(SRational {
@@ -550,8 +586,10 @@ fn parse_srational<E>(data: &[u8], offset: usize, count: usize)
 }
 
 // TIFF and Rust use IEEE 754 format, so no conversion is required.
-fn parse_float<E>(data: &[u8], offset: usize, count: usize)
-                  -> Value where E: Endian {
+fn parse_float<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(f32::from_bits(E::loadu32(data, offset + i * 4)));
@@ -560,8 +598,10 @@ fn parse_float<E>(data: &[u8], offset: usize, count: usize)
 }
 
 // TIFF and Rust use IEEE 754 format, so no conversion is required.
-fn parse_double<E>(data: &[u8], offset: usize, count: usize)
-                   -> Value where E: Endian {
+fn parse_double<E>(data: &[u8], offset: usize, count: usize) -> Value
+where
+    E: Endian,
+{
     let mut val = Vec::with_capacity(count);
     for i in 0..count {
         val.push(f64::from_bits(E::loadu64(data, offset + i * 8)));
@@ -577,15 +617,12 @@ fn parse_unknown(data: &[u8], offset: usize, count: usize) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use crate::endian::BigEndian;
     use super::*;
+    use crate::endian::BigEndian;
 
     #[test]
     fn byte() {
-        let sets: &[(&[u8], &[u8])] = &[
-            (b"x", b""),
-            (b"x\xbe\xad", b"\xbe\xad"),
-        ];
+        let sets: &[(&[u8], &[u8])] = &[(b"x", b""), (b"x\xbe\xad", b"\xbe\xad")];
         let (unitlen, parser) = get_type_info::<BigEndian>(1);
         for &(data, ans) in sets {
             assert!((data.len() - 1) % unitlen == 0);
@@ -599,14 +636,14 @@ mod tests {
     #[test]
     fn ascii() {
         let sets: &[(&[u8], Vec<&[u8]>)] = &[
-            (b"x", vec![]),				// malformed
+            (b"x", vec![]), // malformed
             (b"x\0", vec![b""]),
             (b"x\0\0", vec![b"", b""]),
-            (b"xA", vec![b"A"]),			// malformed
+            (b"xA", vec![b"A"]), // malformed
             (b"xA\0", vec![b"A"]),
-            (b"xA\0B", vec![b"A", b"B"]),		// malformed
+            (b"xA\0B", vec![b"A", b"B"]), // malformed
             (b"xA\0B\0", vec![b"A", b"B"]),
-            (b"xA\0\xbe\0", vec![b"A", b"\xbe"]),	// not ASCII
+            (b"xA\0\xbe\0", vec![b"A", b"\xbe"]), // not ASCII
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(2);
         for &(data, ref ans) in sets {
@@ -619,10 +656,8 @@ mod tests {
 
     #[test]
     fn short() {
-        let sets: &[(&[u8], Vec<u16>)] = &[
-            (b"x", vec![]),
-            (b"x\x01\x02\x03\x04", vec![0x0102, 0x0304]),
-        ];
+        let sets: &[(&[u8], Vec<u16>)] =
+            &[(b"x", vec![]), (b"x\x01\x02\x03\x04", vec![0x0102, 0x0304])];
         let (unitlen, parser) = get_type_info::<BigEndian>(3);
         for &(data, ref ans) in sets {
             assert!((data.len() - 1) % unitlen == 0);
@@ -637,8 +672,10 @@ mod tests {
     fn long() {
         let sets: &[(&[u8], Vec<u32>)] = &[
             (b"x", vec![]),
-            (b"x\x01\x02\x03\x04\x05\x06\x07\x08",
-             vec![0x01020304, 0x05060708]),
+            (
+                b"x\x01\x02\x03\x04\x05\x06\x07\x08",
+                vec![0x01020304, 0x05060708],
+            ),
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(4);
         for &(data, ref ans) in sets {
@@ -654,10 +691,14 @@ mod tests {
     fn rational() {
         let sets: &[(&[u8], Vec<Rational>)] = &[
             (b"x", vec![]),
-            (b"x\xa1\x02\x03\x04\x05\x06\x07\x08\
+            (
+                b"x\xa1\x02\x03\x04\x05\x06\x07\x08\
                \x09\x0a\x0b\x0c\xbd\x0e\x0f\x10",
-             vec![(0xa1020304, 0x05060708).into(),
-                  (0x090a0b0c, 0xbd0e0f10).into()]),
+                vec![
+                    (0xa1020304, 0x05060708).into(),
+                    (0x090a0b0c, 0xbd0e0f10).into(),
+                ],
+            ),
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(5);
         for &(data, ref ans) in sets {
@@ -668,7 +709,7 @@ mod tests {
                     for (x, y) in v.iter().zip(ans.iter()) {
                         assert!(x.num == y.num && x.denom == y.denom);
                     }
-                },
+                }
                 v => panic!("wrong variant {:?}", v),
             }
         }
@@ -676,10 +717,7 @@ mod tests {
 
     #[test]
     fn sbyte() {
-        let sets: &[(&[u8], &[i8])] = &[
-            (b"x", &[]),
-            (b"x\xbe\x7d", &[-0x42, 0x7d]),
-        ];
+        let sets: &[(&[u8], &[i8])] = &[(b"x", &[]), (b"x\xbe\x7d", &[-0x42, 0x7d])];
         let (unitlen, parser) = get_type_info::<BigEndian>(6);
         for &(data, ans) in sets {
             assert!((data.len() - 1) % unitlen == 0);
@@ -692,10 +730,7 @@ mod tests {
 
     #[test]
     fn undefined() {
-        let sets: &[(&[u8], &[u8])] = &[
-            (b"x", b""),
-            (b"x\xbe\xad", b"\xbe\xad"),
-        ];
+        let sets: &[(&[u8], &[u8])] = &[(b"x", b""), (b"x\xbe\xad", b"\xbe\xad")];
         let (unitlen, parser) = get_type_info::<BigEndian>(7);
         for &(data, ans) in sets {
             assert!((data.len() - 1) % unitlen == 0);
@@ -703,7 +738,7 @@ mod tests {
                 Value::Undefined(v, o) => {
                     assert_eq!(v, ans);
                     assert_eq!(o, 1);
-                },
+                }
                 v => panic!("wrong variant {:?}", v),
             }
         }
@@ -729,8 +764,10 @@ mod tests {
     fn slong() {
         let sets: &[(&[u8], Vec<i32>)] = &[
             (b"x", vec![]),
-            (b"x\x01\x02\x03\x04\x85\x06\x07\x08",
-             vec![0x01020304, -0x7af9f8f8]),
+            (
+                b"x\x01\x02\x03\x04\x85\x06\x07\x08",
+                vec![0x01020304, -0x7af9f8f8],
+            ),
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(9);
         for &(data, ref ans) in sets {
@@ -746,10 +783,14 @@ mod tests {
     fn srational() {
         let sets: &[(&[u8], Vec<SRational>)] = &[
             (b"x", vec![]),
-            (b"x\xa1\x02\x03\x04\x05\x06\x07\x08\
+            (
+                b"x\xa1\x02\x03\x04\x05\x06\x07\x08\
                \x09\x0a\x0b\x0c\xbd\x0e\x0f\x10",
-             vec![(-0x5efdfcfc, 0x05060708).into(),
-                  (0x090a0b0c, -0x42f1f0f0).into()]),
+                vec![
+                    (-0x5efdfcfc, 0x05060708).into(),
+                    (0x090a0b0c, -0x42f1f0f0).into(),
+                ],
+            ),
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(10);
         for &(data, ref ans) in sets {
@@ -760,7 +801,7 @@ mod tests {
                     for (x, y) in v.iter().zip(ans.iter()) {
                         assert!(x.num == y.num && x.denom == y.denom);
                     }
-                },
+                }
                 v => panic!("wrong variant {:?}", v),
             }
         }
@@ -770,8 +811,10 @@ mod tests {
     fn float() {
         let sets: &[(&[u8], Vec<f32>)] = &[
             (b"x", vec![]),
-            (b"x\x7f\x7f\xff\xff\x80\x80\x00\x00\x40\x00\x00\x00",
-             vec![std::f32::MAX, -std::f32::MIN_POSITIVE, 2.0]),
+            (
+                b"x\x7f\x7f\xff\xff\x80\x80\x00\x00\x40\x00\x00\x00",
+                vec![std::f32::MAX, -std::f32::MIN_POSITIVE, 2.0],
+            ),
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(11);
         for &(data, ref ans) in sets {
@@ -787,10 +830,12 @@ mod tests {
     fn double() {
         let sets: &[(&[u8], Vec<f64>)] = &[
             (b"x", vec![]),
-            (b"x\x7f\xef\xff\xff\xff\xff\xff\xff\
+            (
+                b"x\x7f\xef\xff\xff\xff\xff\xff\xff\
                \x80\x10\x00\x00\x00\x00\x00\x00\
                \x40\x00\x00\x00\x00\x00\x00\x00",
-             vec![std::f64::MAX, -std::f64::MIN_POSITIVE, 2.0]),
+                vec![std::f64::MAX, -std::f64::MIN_POSITIVE, 2.0],
+            ),
         ];
         let (unitlen, parser) = get_type_info::<BigEndian>(12);
         for &(data, ref ans) in sets {
@@ -919,9 +964,9 @@ mod tests {
         assert_eq!(format!("{}", r), "4294967295/4294967295");
 
         let r = Rational::from((10, 20));
-        assert_eq!(format!("{}", r),         "10/20");
-        assert_eq!(format!("{:11}", r),      "      10/20");
-        assert_eq!(format!("{:3}", r),       "10/20");
+        assert_eq!(format!("{}", r), "10/20");
+        assert_eq!(format!("{:11}", r), "      10/20");
+        assert_eq!(format!("{:3}", r), "10/20");
     }
 
     #[test]
@@ -932,33 +977,38 @@ mod tests {
         assert_eq!(format!("{}", r), "2147483647/2147483647");
 
         let r = SRational::from((-10, 20));
-        assert_eq!(format!("{}", r),         "-10/20");
-        assert_eq!(format!("{:11}", r),      "     -10/20");
-        assert_eq!(format!("{:3}", r),       "-10/20");
+        assert_eq!(format!("{}", r), "-10/20");
+        assert_eq!(format!("{:11}", r), "     -10/20");
+        assert_eq!(format!("{:3}", r), "-10/20");
 
         let r = SRational::from((10, -20));
-        assert_eq!(format!("{}", r),         "10/-20");
-        assert_eq!(format!("{:11}", r),      "     10/-20");
-        assert_eq!(format!("{:3}", r),       "10/-20");
+        assert_eq!(format!("{}", r), "10/-20");
+        assert_eq!(format!("{:11}", r), "     10/-20");
+        assert_eq!(format!("{:3}", r), "10/-20");
 
         let r = SRational::from((-10, -20));
-        assert_eq!(format!("{}", r),         "-10/-20");
-        assert_eq!(format!("{:11}", r),      "    -10/-20");
-        assert_eq!(format!("{:3}", r),       "-10/-20");
+        assert_eq!(format!("{}", r), "-10/-20");
+        assert_eq!(format!("{:11}", r), "    -10/-20");
+        assert_eq!(format!("{:3}", r), "-10/-20");
     }
 
     #[test]
     fn ratioanl_f64() {
         use std::{f64, u32};
         assert_eq!(Rational::from((1, 2)).to_f64(), 0.5);
-        assert_eq!(Rational::from((1, u32::MAX)).to_f64(),
-                   2.3283064370807974e-10);
-        assert_eq!(Rational::from((u32::MAX, 1)).to_f64(),
-                   u32::MAX as f64);
-        assert_eq!(Rational::from((u32::MAX - 1, u32::MAX)).to_f64(),
-                   0.9999999997671694);
-        assert_eq!(Rational::from((u32::MAX, u32::MAX - 1)).to_f64(),
-                   1.0000000002328306);
+        assert_eq!(
+            Rational::from((1, u32::MAX)).to_f64(),
+            2.3283064370807974e-10
+        );
+        assert_eq!(Rational::from((u32::MAX, 1)).to_f64(), u32::MAX as f64);
+        assert_eq!(
+            Rational::from((u32::MAX - 1, u32::MAX)).to_f64(),
+            0.9999999997671694
+        );
+        assert_eq!(
+            Rational::from((u32::MAX, u32::MAX - 1)).to_f64(),
+            1.0000000002328306
+        );
         assert_eq!(Rational::from((1, 0)).to_f64(), f64::INFINITY);
         assert!(Rational::from((0, 0)).to_f64().is_nan());
 
