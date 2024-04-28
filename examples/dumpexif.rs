@@ -58,5 +58,10 @@ fn dump_file(path: &Path) -> Result<(), exif::Error> {
     if let Some(f) = exif.get_field(exif::Tag::LensMake, exif::In::PRIMARY) {
         println!("LensMake: {}", f.display_value().with_unit(&exif));
     }
+
+    // Dump the LensModel tag of the first IFD.
+    if let Some(f) = exif.get_field(exif::Tag::LensModel, exif::In::PRIMARY) {
+        println!("LensModel: {}", f.display_value().with_unit(&exif));
+    }
     Ok(())
 }
