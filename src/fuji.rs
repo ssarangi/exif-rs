@@ -343,23 +343,23 @@ impl FujiParser {
             little_endian: little_endian,
         };
 
-        println!(
-            "----------------------------- START FUJI RAF TAGS ---------------------------------"
-        );
+        // println!(
+        //     "----------------------------- START FUJI RAF TAGS ---------------------------------"
+        // );
 
-        for f in exif.fields() {
-            println!(
-                "  {}/{}: {}",
-                f.ifd_num.index(),
-                f.tag,
-                f.display_value().with_unit(&exif)
-            );
-            println!("      {:?}", f.value);
-        }
+        // for f in exif.fields() {
+        //     println!(
+        //         "  {}/{}: {}",
+        //         f.ifd_num.index(),
+        //         f.tag,
+        //         f.display_value().with_unit(&exif)
+        //     );
+        //     println!("      {:?}", f.value);
+        // }
 
-        println!(
-            "----------------------------- END FUJI RAF TAGS ---------------------------------"
-        );
+        // println!(
+        //     "----------------------------- END FUJI RAF TAGS ---------------------------------"
+        // );
 
         Ok(exif)
     }
