@@ -69,6 +69,27 @@ impl Exif {
             .get(&(ifd_num, tag))
             .map(|&i| self.entries[i].ref_field(&self.buf, self.little_endian))
     }
+
+    #[inline]
+    pub fn merge_two_exif(exif1: &Exif, exif2: &Exif) -> Exif {
+        let mut new_entries = exif1.entries.clone();
+        let mut new_entry_map = exif1.entry_map.clone();
+
+        let offset = exif1.entries.len();
+
+        // Append exif2 entries and adjust entry_map
+        new_entries.extend(exif2.entries.iter().cloned());
+        for (key, &index) in exif2.entry_map.iter() {
+            new_entry_map.insert(*key, index + offset);
+        }
+
+        Exif {
+            buf: vec![], // Not merging buffers due to complexity
+            entries: new_entries,
+            entry_map: new_entry_map,
+            little_endian: exif1.little_endian, // Assumes both have the same endianness
+        }
+    }
 }
 
 impl<'a> ProvideUnit<'a> for &'a Exif {

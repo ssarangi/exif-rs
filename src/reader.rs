@@ -96,7 +96,7 @@ impl Reader {
     {
         let mut parser = FujiParser::default();
         parser.parse(reader)?;
-        Ok(parser.jpeg_exif.unwrap())
+        Ok(parser.raw_exif.unwrap())
     }
 
     /// Reads an image file and parses the Exif attributes in it.
@@ -120,10 +120,6 @@ impl Reader {
         if tiff::is_tiff(&buf) {
             reader.read_to_end(&mut buf)?;
         } else if fuji::is_fuji_raf(&buf) {
-            // reader.seek(io::SeekFrom::Start(0))?;
-            // buf = fuji::parse_fuji_raw(reader)?;
-            // buf = jpeg::get_exif_attr(&mut buf.chain(reader))?; // JPEG in RAF
-            // println!("buf: {:?}", buf[0..3]);
             return self.read_fuji_raw(reader);
         } else if jpeg::is_jpeg(&buf) {
             buf = jpeg::get_exif_attr(&mut buf.chain(reader))?;

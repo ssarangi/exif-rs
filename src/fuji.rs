@@ -190,11 +190,15 @@ pub enum FujiIFD {
 #[derive(Debug)]
 pub struct FujiParser {
     pub jpeg_exif: Option<Exif>,
+    pub raw_exif: Option<Exif>,
 }
 
 impl Default for FujiParser {
     fn default() -> Self {
-        Self { jpeg_exif: None }
+        Self {
+            jpeg_exif: None,
+            raw_exif: None,
+        }
     }
 }
 
@@ -210,26 +214,15 @@ impl FujiParser {
         self.jpeg_exif = extract_jpeg_exif(reader).ok();
 
         // let _ = self.parse_sub(data, marker::TIFF1_JPEG_PTR_OFFSET + 12);
-        self.parse_fuji_raw(reader)?;
+        self.raw_exif = self.parse_fuji_raw(reader).ok();
+
+        if let (Some(raw_exif), Some(jpeg_exif)) = (&self.raw_exif, &self.jpeg_exif) {
+            Exif::merge_two_exif(raw_exif, jpeg_exif);
+        }
 
         // IFD0 loading
         Ok(())
     }
-
-    // fn parse_sub(&mut self, data: &[u8], offset: usize) -> Result<(), Error> {
-    //     match BigEndian::loadu16(data, offset as usize) {
-    //         TIFF_BE => {
-    //             println!("BigEndian");
-    //             // self.parse_sub::<BigEndian>(data)
-    //         }
-    //         TIFF_LE => {
-    //             println!("LittleEndian");
-    //             // self.parse_sub::<LittleEndian>(data)
-    //         } // _ => Err(Error::InvalidFormat("Invalid TIFF byte order")),
-    //         _ => println!("IFD has no endian message"),
-    //     }
-    //     Ok(())
-    // }
 
     /// RAF format contains multiple TIFF and TIFF-like structures.
     /// This creates an IFD with all other IFD's found as sub IFD's.

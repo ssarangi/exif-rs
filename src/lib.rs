@@ -212,6 +212,23 @@ pub struct MutOnce<T> {
     state: Cell<State>,
 }
 
+// Implementing Clone for MutOnce where T is Clone
+impl<T: Clone> MutOnce<T> {
+    // This function will attempt to clone the content of MutOnce
+    // only if it meets certain logical conditions you define.
+    pub fn clone_custom(&self) -> Self {
+        let value_cloned = unsafe {
+            // Unsafe block required to access the value inside UnsafeCell.
+            // Ensure that this does not lead to data races or undefined behaviors.
+            (*self.value.get()).clone()
+        };
+        MutOnce {
+            value: UnsafeCell::new(value_cloned),
+            state: self.state.clone(),
+        }
+    }
+}
+
 impl<T> MutOnce<T> {
     /// Creates a new `MutOnce` containing the given `value`.
     #[inline]

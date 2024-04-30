@@ -22,6 +22,22 @@ pub struct IfdEntry {
     pub field: MutOnce<Field>,
 }
 
+// Implementing Clone for IfdEntry
+impl Clone for IfdEntry {
+    fn clone(&self) -> Self {
+        IfdEntry {
+            field: self.field.clone_custom(),
+        }
+    }
+}
+
+// Implement Clone for simple types
+impl Clone for MutOnce<Field> {
+    fn clone(&self) -> Self {
+        self.clone_custom()
+    }
+}
+
 impl IfdEntry {
     pub fn ifd_num_tag(&self) -> (In, Tag) {
         if self.field.is_fixed() {
