@@ -46,7 +46,7 @@ fn dump_file(path: &Path) -> Result<(), exif::Error> {
     println!("{}", path.display());
     for f in exif.fields() {
         println!(
-            "  {}/{}: {}",
+            "  {}/{} --> : {}",
             f.ifd_num.index(),
             f.tag,
             f.display_value().with_unit(&exif)

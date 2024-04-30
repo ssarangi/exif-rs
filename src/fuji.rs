@@ -190,7 +190,7 @@ pub enum FujiIFD {
 #[derive(Debug)]
 pub struct FujiParser {
     pub jpeg_exif: Option<Exif>,
-    pub raw_exif: Option<Exif>,
+    raw_exif: Option<Exif>,
 }
 
 impl Default for FujiParser {
@@ -214,11 +214,7 @@ impl FujiParser {
         self.jpeg_exif = extract_jpeg_exif(reader).ok();
 
         // let _ = self.parse_sub(data, marker::TIFF1_JPEG_PTR_OFFSET + 12);
-        self.raw_exif = self.parse_fuji_raw(reader).ok();
-
-        if let (Some(raw_exif), Some(jpeg_exif)) = (&self.raw_exif, &self.jpeg_exif) {
-            Exif::merge_two_exif(raw_exif, jpeg_exif);
-        }
+        // self.raw_exif = self.parse_fuji_raw(reader).ok();
 
         // IFD0 loading
         Ok(())

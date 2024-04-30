@@ -96,7 +96,7 @@ impl Reader {
     {
         let mut parser = FujiParser::default();
         parser.parse(reader)?;
-        Ok(parser.raw_exif.unwrap())
+        Ok(parser.jpeg_exif.unwrap())
     }
 
     /// Reads an image file and parses the Exif attributes in it.
